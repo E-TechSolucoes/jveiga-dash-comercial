@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { Bell, Calendar, Crown, Settings, Swords, Target } from "lucide-react";
+import { Bell, Calendar, Crown, Swords, Target } from "lucide-react";
 import { useState } from "react";
 
 import { isoWeekNumber } from "@/lib/arsenal/api";
 
 import type { EmpresaOption, PeriodoId } from "./types";
+import { UserMenu } from "./user-menu";
 
 type Props = {
   empresa: string;
@@ -154,9 +154,7 @@ export function Topbar({
             <Bell size={18} strokeWidth={1.75} />
             <span className="dot" aria-hidden />
           </button>
-          <Link href="/admin" className="icon-btn" aria-label="Configurações" title="Configurações">
-            <Settings size={18} strokeWidth={1.75} />
-          </Link>
+          <UserMenu />
         </div>
       </header>
 
