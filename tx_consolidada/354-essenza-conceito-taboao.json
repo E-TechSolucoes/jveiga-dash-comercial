@@ -1,0 +1,324 @@
+{
+  "meta": {
+    "empreendimento": "ESSENZA CONCEITO TABOÃO",
+    "codigo_interno_dwh_leads": "354",
+    "arquivo": "354-essenza-conceito-taboao.json",
+    "observacao_dados": "Snapshot atual: 5.796 leads distintos (Leads) e 1 linhas em Visitas para este nome normalizado. Se houver visitas com outro texto de empreendimento, elas não entram neste corte.",
+    "filtros": {
+      "leads": "dwh.Leads: codigointerno_empreendimento = '354'. Contagem = COUNT(DISTINCT idlead) por mês de data_cad.",
+      "visitas": "dwh.Visitas: empreendimento comparado por nome normalizado (sem acento, caixa alta e trim). Mês da visita = PARSE data DD/MM/YYYY, com fallback em created_at_utc."
+    },
+    "metricas": {
+      "taxa_conversao_mensal_pct": "visitas / leads * 100 no mês (NULL se leads=0).",
+      "taxa_conversao_acumulada_pct": "visitas acumuladas / leads acumulados * 100 até o mês (equivalente ao exemplo 120/1300)."
+    }
+  },
+  "por_mes": [
+    {
+      "mes": "2021-10",
+      "leads": 1,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 1,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2022-12",
+      "leads": 1,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2023-01",
+      "leads": 2,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2023-02",
+      "leads": 2,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 6,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2023-03",
+      "leads": 2,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 8,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2023-06",
+      "leads": 1,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 9,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2023-09",
+      "leads": 1,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 10,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-02",
+      "leads": 179,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 189,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-03",
+      "leads": 260,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 449,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-04",
+      "leads": 607,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 1056,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-05",
+      "leads": 1056,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2112,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-06",
+      "leads": 419,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2531,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-07",
+      "leads": 24,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2555,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-08",
+      "leads": 9,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2564,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-09",
+      "leads": 3,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2567,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-10",
+      "leads": 1,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2568,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-11",
+      "leads": 3,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2571,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2024-12",
+      "leads": 6,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2577,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-01",
+      "leads": 2,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2579,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-02",
+      "leads": 13,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2592,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-03",
+      "leads": 21,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 2613,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-04",
+      "leads": 578,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 3191,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-05",
+      "leads": 804,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 3995,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-06",
+      "leads": 99,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4094,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-07",
+      "leads": 99,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4193,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-08",
+      "leads": 42,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4235,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-09",
+      "leads": 30,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4265,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-10",
+      "leads": 15,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4280,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-11",
+      "leads": 10,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4290,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2025-12",
+      "leads": 15,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4305,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2026-01",
+      "leads": 456,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 4761,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2026-02",
+      "leads": 390,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 5151,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2026-03",
+      "leads": 323,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 5474,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2026-04",
+      "leads": 322,
+      "visitas": 1,
+      "taxa_conversao_mensal_pct": 0.31,
+      "leads_acumulado": 5796,
+      "visitas_acumulado": 1,
+      "taxa_conversao_acumulada_pct": 0.02
+    }
+  ]
+}

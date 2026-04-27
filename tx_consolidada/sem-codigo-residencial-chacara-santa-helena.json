@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "empreendimento": "Residencial Chácara Santa Helena",
+    "codigo_interno_dwh_leads": null,
+    "arquivo": "sem-codigo-residencial-chacara-santa-helena.json",
+    "observacao_dados": "Snapshot atual: 884 leads distintos (Leads) e 11 linhas em Visitas para este nome normalizado. Se houver visitas com outro texto de empreendimento, elas não entram neste corte.",
+    "filtros": {
+      "leads": "dwh.Leads: código interno ausente no cadastro; fallback por nome normalizado do empreendimento. Contagem = COUNT(DISTINCT idlead) por mês de data_cad.",
+      "visitas": "dwh.Visitas: empreendimento comparado por nome normalizado (sem acento, caixa alta e trim). Mês da visita = PARSE data DD/MM/YYYY, com fallback em created_at_utc."
+    },
+    "metricas": {
+      "taxa_conversao_mensal_pct": "visitas / leads * 100 no mês (NULL se leads=0).",
+      "taxa_conversao_acumulada_pct": "visitas acumuladas / leads acumulados * 100 até o mês (equivalente ao exemplo 120/1300)."
+    }
+  },
+  "por_mes": [
+    {
+      "mes": "2021-05",
+      "leads": 53,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 53,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-06",
+      "leads": 59,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 112,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-07",
+      "leads": 67,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 179,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-08",
+      "leads": 280,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 459,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-09",
+      "leads": 231,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 690,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-10",
+      "leads": 179,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 869,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2021-11",
+      "leads": 15,
+      "visitas": 0,
+      "taxa_conversao_mensal_pct": 0,
+      "leads_acumulado": 884,
+      "visitas_acumulado": 0,
+      "taxa_conversao_acumulada_pct": 0
+    },
+    {
+      "mes": "2026-04",
+      "leads": 0,
+      "visitas": 11,
+      "taxa_conversao_mensal_pct": null,
+      "leads_acumulado": 884,
+      "visitas_acumulado": 11,
+      "taxa_conversao_acumulada_pct": 1.24
+    }
+  ]
+}

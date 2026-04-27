@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const m = require\\('lucide-react'\\); console.log\\(typeof m.icons, m.icons ? Object.keys\\(m.icons\\).slice\\(0,5\\) : 'NONE'\\); console.log\\('Flag in default keys:', !!m.Flag, !!m.LayoutGrid\\);\")",
+      "Bash(npx eslint *)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(rm src/auth.ts src/proxy.ts src/app/api/auth/\\\\[...nextauth\\\\]/route.ts)",
+      "Bash(rmdir src/app/api/auth/\\\\[...nextauth\\\\] src/app/api/auth)",
+      "Bash(echo \"TSC=$?\")",
+      "Bash(echo \"ESLINT=$?\")",
+      "Bash(rm -v \"src/app/\\(dashboard\\)/dashboard/_components/stand-check-logs.ts\" \"src/app/api/stand-check-logs/route.ts\" \"src/app/api/stand-check-logs/week/route.ts\")",
+      "Bash(rmdir -v \"src/app/api/stand-check-logs/week\" \"src/app/api/stand-check-logs\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://localhost:3000 -o /tmp/page.html)",
+      "Bash(curl -sI http://localhost:3000/)",
+      "Bash(curl -s \"http://localhost:3000/_next/static/css/\")",
+      "Bash(curl -s \"http://localhost:3000/\")",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0v79_yg._.css\")",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0v79_yg._.css\" -o /tmp/served.css)",
+      "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }' /tmp/served.css)",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0v79_yg._.css\" -o /tmp/served2.css)",
+      "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }' /tmp/served2.css)",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0v79_yg._.css\" -o /tmp/served3.css)",
+      "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }' /tmp/served3.css)",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__0v79_yg._.css\" -o /tmp/served4.css)",
+      "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }' /tmp/served4.css)",
+      "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 5 http://localhost:3000/dashboard)",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('e:/projetos/jveiga/jveiga-dash-comercial/src/app/globals.css','utf8'\\); const o=\\(c.match\\(/\\\\{/g\\)||[]\\).length, x=\\(c.match\\(/\\\\}/g\\)||[]\\).length; console.log\\('open:', o, 'close:', x, 'balanced:', o===x\\);\")",
+      "Bash(curl -s --max-time 5 -o /tmp/dash.html -w \"status:%{http_code} size:%{size_download} time:%{time_total}\\\\n\" http://localhost:3000/dashboard)"
+    ]
+  }
+}

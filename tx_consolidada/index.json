@@ -1,0 +1,149 @@
+[
+  {
+    "arquivo": "85-carioca-park-ii.json",
+    "empreendimento": "CARIOCA PARK II",
+    "meses": 35,
+    "leads": 1759,
+    "visitas": 3
+  },
+  {
+    "arquivo": "1-chardonnay.json",
+    "empreendimento": "CHARDONNAY",
+    "meses": 16,
+    "leads": 219,
+    "visitas": 5
+  },
+  {
+    "arquivo": "351-conceito-california.json",
+    "empreendimento": "CONCEITO CALIFORNIA",
+    "meses": 35,
+    "leads": 11876,
+    "visitas": 6
+  },
+  {
+    "arquivo": "347-conceito-poa.json",
+    "empreendimento": "CONCEITO POÁ",
+    "meses": 23,
+    "leads": 15550,
+    "visitas": 6
+  },
+  {
+    "arquivo": "52-conceito-residencial.json",
+    "empreendimento": "CONCEITO RESIDENCIAL",
+    "meses": 56,
+    "leads": 1448,
+    "visitas": 7
+  },
+  {
+    "arquivo": "392-conceito-super-california.json",
+    "empreendimento": "CONCEITO SUPER CALIFÓRNIA",
+    "meses": 16,
+    "leads": 4037,
+    "visitas": 0
+  },
+  {
+    "arquivo": "66-conceito-taboao.json",
+    "empreendimento": "CONCEITO TABOAO",
+    "meses": 43,
+    "leads": 4636,
+    "visitas": 3
+  },
+  {
+    "arquivo": "35-duo-london.json",
+    "empreendimento": "DUO LONDON",
+    "meses": 49,
+    "leads": 8879,
+    "visitas": 3
+  },
+  {
+    "arquivo": "354-essenza-conceito-taboao.json",
+    "empreendimento": "ESSENZA CONCEITO TABOÃO",
+    "meses": 34,
+    "leads": 5796,
+    "visitas": 1
+  },
+  {
+    "arquivo": "34-jardins-nova-iguacu.json",
+    "empreendimento": "JARDINS NOVA IGUAÇU",
+    "meses": 56,
+    "leads": 2506,
+    "visitas": 11
+  },
+  {
+    "arquivo": "13-mondo-nacoes.json",
+    "empreendimento": "MONDO NAÇÕES",
+    "meses": 8,
+    "leads": 17,
+    "visitas": 7
+  },
+  {
+    "arquivo": "21-palazzo-ducale.json",
+    "empreendimento": "PALAZZO DUCALE",
+    "meses": 38,
+    "leads": 952,
+    "visitas": 4
+  },
+  {
+    "arquivo": "14-primavera-belford-roxo-i.json",
+    "empreendimento": "PRIMAVERA BELFORD ROXO I",
+    "meses": 11,
+    "leads": 22,
+    "visitas": 5
+  },
+  {
+    "arquivo": "15-reserva-belford-roxo.json",
+    "empreendimento": "RESERVA BELFORD ROXO",
+    "meses": 29,
+    "leads": 396,
+    "visitas": 3
+  },
+  {
+    "arquivo": "59-reserva-carioca-park.json",
+    "empreendimento": "RESERVA CARIOCA PARK",
+    "meses": 36,
+    "leads": 9990,
+    "visitas": 1
+  },
+  {
+    "arquivo": "84-residencial-ondas-verdes.json",
+    "empreendimento": "RESIDENCIAL ONDAS VERDES",
+    "meses": 41,
+    "leads": 3518,
+    "visitas": 2
+  },
+  {
+    "arquivo": "sem-codigo-residencial-chacara-santa-helena.json",
+    "empreendimento": "Residencial Chácara Santa Helena",
+    "meses": 8,
+    "leads": 884,
+    "visitas": 11
+  },
+  {
+    "arquivo": "390-samba-grajau.json",
+    "empreendimento": "SAMBA GRAJAU",
+    "meses": 16,
+    "leads": 6031,
+    "visitas": 9
+  },
+  {
+    "arquivo": "362-signature-conceito-taboao.json",
+    "empreendimento": "SIGNATURE CONCEITO TABOÃO",
+    "meses": 12,
+    "leads": 2285,
+    "visitas": 4
+  },
+  {
+    "arquivo": "64-vista-caucaia-apartamentos-pinheiro-alto.json",
+    "empreendimento": "VISTA CAUCAIA APARTAMENTOS - PINHEIRO ALTO",
+    "meses": 30,
+    "leads": 1214,
+    "visitas": 2
+  },
+  {
+    "arquivo": "83-vista-caucaia-casas-pinheiro-alto.json",
+    "empreendimento": "VISTA CAUCAIA CASAS - PINHEIRO ALTO",
+    "meses": 21,
+    "leads": 5670,
+    "visitas": 2
+  }
+]
