@@ -289,15 +289,6 @@ export function OutboundTab() {
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span className="field-label">Corretor</span>
-              <input
-                className="field-input"
-                value={novoCorretor}
-                onChange={(e) => setNovoCorretor(e.target.value)}
-                placeholder="Nome do corretor"
-              />
-            </label>
           </div>
           <button type="button" className="btn btn--primary btn--full" onClick={addLead}>
             <Plus size={15} strokeWidth={2.25} /> Adicionar lead

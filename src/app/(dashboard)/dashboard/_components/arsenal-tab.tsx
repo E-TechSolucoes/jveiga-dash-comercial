@@ -574,13 +574,7 @@ function BrokersCard({
             <tr>
               <th>Corretor</th>
               <th>Imob.</th>
-              <th title="Indicações">Ind</th>
-              <th title="Visitas">Vis</th>
-              <th title="Pastas">Pas</th>
-              <th title="Pastas Aprovadas">PA</th>
-              <th title="Vendas">Ven</th>
-              <th>Pts</th>
-              <th>Nível</th>
+              <th>Celular</th>
               <th aria-label="Ações" />
             </tr>
           </thead>
@@ -589,50 +583,24 @@ function BrokersCard({
               <BrokerRowsSkeleton />
             ) : brokers.length === 0 ? (
               <tr>
-                <td colSpan={10} className="data-table-empty">
+                <td colSpan={4} className="data-table-empty">
                   Nenhum corretor cadastrado ainda — adicione acima.
                 </td>
               </tr>
             ) : (
               brokers.map((broker) => {
-                const draft = statDrafts[broker.broker_id] ?? {};
                 const isPending = !!pendingBroker[broker.broker_id];
-                const fieldValue = (field: StatField) => draft[field] ?? broker[field];
                 return (
                   <tr key={broker.broker_id} data-pending={isPending}>
                     <td className="cell-strong">
                       <div className="corr-name">{broker.nome}</div>
-                      {broker.celular && <div className="corr-tel">{broker.celular}</div>}
                     </td>
                     <td>
                       <span className="chip-soft" data-accent="blue">
                         {broker.imobiliaria || "—"}
                       </span>
                     </td>
-                    {(["ind", "vis", "pas", "pas_aprov", "vendas"] as StatField[]).map((field) => (
-                      <td key={field} className="cell-num">
-                        <input
-                          type="number"
-                          min={0}
-                          value={fieldValue(field)}
-                          className="cell-input cell-input--xs"
-                          disabled={isPending}
-                          onChange={(e) =>
-                            onSetStatDraft(broker.broker_id, field, Number(e.target.value) || 0)
-                          }
-                          onBlur={() => onFlushStats(broker)}
-                        />
-                      </td>
-                    ))}
-                    <td className="cell-num cell-strong corr-pts">{broker.pts}</td>
-                    <td>
-                      <span
-                        className="nivel-badge"
-                        data-accent={NIVEL_ACCENT[broker.nivel as Nivel]}
-                      >
-                        {broker.nivel}
-                      </span>
-                    </td>
+                    <td>{broker.celular || "—"}</td>
                     <td className="cell-actions">
                       <button
                         type="button"
