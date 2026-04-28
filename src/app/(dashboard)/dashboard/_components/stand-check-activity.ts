@@ -51,6 +51,11 @@ export type StandCheckItemWithCheck = {
 
 export type ReplaceStandCheckActivityBody = {
   // user_id NÃO entra no body — o backend resolve pelo JWT.
+  // empreendimento_id é OBRIGATÓRIO no stand: a chave passa de
+  // (user_id, day) para (user_id, empreendimento_id, day), permitindo
+  // que o mesmo usuário tenha checklists independentes por empreendimento
+  // no mesmo dia.
+  empreendimento_id: number;
   day?: string;
   items: Array<{
     item_id: string;
@@ -76,10 +81,13 @@ export type StandCheckActivity = {
 };
 
 export async function fetchStandCheckItemsToday(
+  empreendimentoId: number,
   signal?: AbortSignal,
 ): Promise<StandCheckItemWithCheck[]> {
-  // Sem query params: o backend já filtra is_active=true e usa hoje (BR).
-  return apiFetch<StandCheckItemWithCheck[]>("/api/v1/stand-check-items", {
+  // empreendimento_id é obrigatório; o backend já filtra is_active=true
+  // e usa hoje (BR) automaticamente.
+  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
+  return apiFetch<StandCheckItemWithCheck[]>(`/api/v1/stand-check-items?${qs.toString()}`, {
     signal,
   });
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "./auth-provider";
+import { readAccessToken } from "./storage";
 
 type Props = {
   children: React.ReactNode;
@@ -13,6 +14,10 @@ type Props = {
 export function RequireAuth({ children, admin = false }: Props) {
   const { session, loading } = useAuth();
   const router = useRouter();
+
+  // Optimistic gate: if a token exists in storage, render children right away
+  // so the page can show its own skeletons while the session hydrates.
+  const [hasStoredToken] = useState(() => Boolean(readAccessToken()));
 
   useEffect(() => {
     if (loading) return;
@@ -25,17 +30,9 @@ export function RequireAuth({ children, admin = false }: Props) {
     }
   }, [session, loading, admin, router]);
 
-  if (loading || !session) {
-    return (
-      <div className="flex min-h-svh items-center justify-center text-sm text-gray-500">
-        Carregando...
-      </div>
-    );
-  }
-
-  if (admin && !session.user.is_admin) {
-    return null;
-  }
+  if (loading && !hasStoredToken) return null;
+  if (!loading && !session) return null;
+  if (admin && session && !session.user.is_admin) return null;
 
   return <>{children}</>;
 }

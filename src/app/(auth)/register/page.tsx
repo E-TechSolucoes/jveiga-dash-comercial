@@ -1,11 +1,14 @@
 "use client";
 
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import type { ApiError } from "@/lib/auth";
+
+import { EditorialPanel } from "../_components/editorial-panel";
 
 function errorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "error" in err) {
@@ -63,7 +66,6 @@ export default function RegisterPage() {
         await login(email.trim(), password);
         router.replace("/dashboard");
       } catch (loginErr) {
-        // conta criada, mas login automático falhou — manda pro login
         const msg = errorMessage(loginErr, "Conta criada. Faça login para continuar.");
         router.replace(`/login?msg=${encodeURIComponent(msg)}`);
       }
@@ -77,92 +79,140 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-gray-50 px-4 py-8 dark:bg-gray-950">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-50">
-            Criar minha conta
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Preencha seus dados para acessar o painel
-          </p>
-        </div>
+    <main className="grid min-h-svh grid-cols-1 bg-white text-slate-900 lg:grid-cols-12">
+      <EditorialPanel />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Field
-            id="name"
-            label="Nome"
-            type="text"
-            autoComplete="name"
-            value={name}
-            onChange={setName}
-            required
-            errors={fields.name}
-            placeholder="Seu nome completo"
-          />
+      <section className="relative flex flex-col px-6 py-10 sm:px-12 lg:col-span-7 lg:px-16 lg:py-12">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: "linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px)",
+            backgroundSize: "120px 100%",
+          }}
+        />
 
-          <Field
-            id="email"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={setEmail}
-            required
-            errors={fields.email}
-            placeholder="voce@empresa.com"
-          />
-
-          <Field
-            id="password"
-            label="Senha"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={setPassword}
-            required
-            errors={fields.password}
-            placeholder="Mínimo 8 caracteres"
-            hint="Use ao menos 8 caracteres."
-          />
-
-          <Field
-            id="confirm"
-            label="Confirmar senha"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={setConfirm}
-            required
-            errors={fields.confirm}
-            placeholder="Repita a senha"
-          />
-
-          {error && !Object.keys(fields).length && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+        <header className="relative z-10 flex items-center justify-between">
+          <Link
+            href="/"
+            className="font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-slate-900"
           >
-            {submitting ? "Criando conta..." : "Criar conta"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-          Já tem conta?{" "}
+            ACESSO &nbsp;/&nbsp; CRIAR CONTA
+          </Link>
           <Link
             href="/login"
-            className="font-medium text-gray-900 underline-offset-2 hover:underline dark:text-gray-100"
+            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-blue-700"
           >
-            Entrar
+            <ArrowRight
+              className="h-3 w-3 -scale-x-100 transition group-hover:-translate-x-1"
+              aria-hidden
+            />
+            ENTRAR
           </Link>
-        </p>
-      </div>
+        </header>
+
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center py-14">
+          <h1 className="font-sans text-[56px] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[64px]">
+            Crie sua
+            <span className="block font-light text-blue-700">conta.</span>
+          </h1>
+          <p className="mt-6 max-w-md text-base leading-relaxed text-slate-500">
+            Peça acesso ao painel comercial. Após a aprovação, você acompanha funil, metas e
+            performance em tempo real.
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-12 space-y-7">
+            <Field
+              id="name"
+              label="NOME"
+              type="text"
+              autoComplete="name"
+              value={name}
+              onChange={setName}
+              required
+              errors={fields.name}
+              placeholder="Seu nome completo"
+            />
+
+            <Field
+              id="email"
+              label="E-MAIL"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={setEmail}
+              required
+              errors={fields.email}
+              placeholder="voce@empresa.com"
+            />
+
+            <Field
+              id="password"
+              label="SENHA"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={setPassword}
+              required
+              errors={fields.password}
+              placeholder="Mínimo 8 caracteres"
+              hint="Use ao menos 8 caracteres."
+            />
+
+            <Field
+              id="confirm"
+              label="CONFIRMAR SENHA"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={setConfirm}
+              required
+              errors={fields.confirm}
+              placeholder="Repita a senha"
+            />
+
+            {error && !Object.keys(fields).length && (
+              <p
+                role="alert"
+                className="flex items-start gap-3 border-l-2 border-rose-500 bg-rose-50/60 py-3 pl-4 text-sm text-rose-700"
+              >
+                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-rose-700/70">
+                  ERRO
+                </span>
+                <span className="text-rose-700">{error}</span>
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="group relative flex w-full items-center justify-between overflow-hidden rounded-sm bg-slate-900 px-6 py-4 text-left text-white transition focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1e40af] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
+              />
+              <span className="relative z-10 font-mono text-[11px] tracking-[0.36em]">
+                {submitting ? "CRIANDO CONTA…" : "CRIAR CONTA"}
+              </span>
+              <ArrowRight
+                className="relative z-10 h-4 w-4 transition group-hover:translate-x-1"
+                aria-hidden
+              />
+            </button>
+          </form>
+
+          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-slate-500">
+            JÁ TEM CONTA?&nbsp;&nbsp;
+            <Link
+              href="/login"
+              className="text-slate-900 underline-offset-[6px] transition hover:text-blue-700 hover:underline"
+            >
+              ENTRAR
+            </Link>
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
@@ -193,33 +243,56 @@ function Field({
   hint,
 }: FieldProps) {
   const hasError = errors && errors.length > 0;
+  const isPassword = type === "password";
+  const [reveal, setReveal] = useState(false);
+  const inputType = isPassword && reveal ? "text" : type;
+
   return (
     <div>
       <label
         htmlFor={id}
-        className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+        className="mb-2 block font-mono text-[10px] tracking-[0.32em] text-slate-500"
       >
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={required}
-        placeholder={placeholder}
-        aria-invalid={hasError || undefined}
-        className={`w-full rounded-lg border px-3 py-2 text-sm transition outline-none focus:ring-2 ${
-          hasError
-            ? "border-red-400 bg-white text-gray-900 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60 dark:bg-gray-950 dark:text-gray-100"
-            : "border-gray-300 bg-white text-gray-900 focus:border-gray-900 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-100 dark:focus:ring-gray-100/10"
-        }`}
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type={inputType}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          placeholder={placeholder}
+          aria-invalid={hasError || undefined}
+          className={`w-full rounded-md border py-3 pl-4 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:bg-white focus:ring-2 ${
+            isPassword ? "pr-14" : "pr-4"
+          } ${
+            hasError
+              ? "border-rose-300 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-500/25"
+              : "border-blue-200 bg-blue-50/40 focus:border-blue-600 focus:ring-blue-600/25"
+          }`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setReveal((v) => !v)}
+            aria-label={reveal ? "Ocultar senha" : "Mostrar senha"}
+            aria-pressed={reveal}
+            className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400 transition hover:text-blue-700 focus:text-blue-700 focus:outline-none"
+          >
+            {reveal ? (
+              <EyeOff className="h-5 w-5" aria-hidden />
+            ) : (
+              <Eye className="h-5 w-5" aria-hidden />
+            )}
+          </button>
+        )}
+      </div>
       {hasError ? (
-        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{errors!.join(" · ")}</p>
+        <p className="mt-2 text-xs text-rose-600">{errors!.join(" · ")}</p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">{hint}</p>
+        <p className="mt-2 text-xs text-slate-500">{hint}</p>
       ) : null}
     </div>
   );

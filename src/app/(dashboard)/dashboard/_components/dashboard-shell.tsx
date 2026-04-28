@@ -8,7 +8,6 @@ import { CascadeCard } from "./cascade-card";
 import { CheckTab } from "./check-tab";
 import { ConhecimentoTab } from "./conhecimento-tab";
 import { FunnelSection } from "./funnel-section";
-import { HistoricConversionCard } from "./historic-conversion-card";
 import { ImobTab } from "./imob-tab";
 import { OutboundTab } from "./outbound-tab";
 import { PastasTab } from "./pastas-tab";
@@ -54,6 +53,13 @@ const EMPRESAS: EmpresaOption[] = (empreendimentosData as EmpreendimentoRow[]).m
     label: codigo ? `${codigo} - ${row.empreendimento}` : row.empreendimento,
   };
 });
+
+const STORAGE_EMPRESA = "dash.empresa";
+const STORAGE_PERIODO = "dash.periodo";
+const STORAGE_CUSTOM_FROM = "dash.customFrom";
+const STORAGE_CUSTOM_TO = "dash.customTo";
+
+const PERIODOS_VALIDOS: readonly PeriodoId[] = ["semana", "mes", "ultimo_mes", "custom"];
 
 function formatBrDate(d: Date): string {
   return d.toLocaleDateString("pt-BR", {
@@ -119,12 +125,59 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
 }
 
 export function DashboardShell() {
+  const persistedFilters = useMemo(() => {
+    if (typeof window === "undefined") {
+      return {
+        empresa: EMPRESAS[0]?.value ?? "",
+        periodo: "ultimo_mes" as PeriodoId,
+        customFrom: "",
+        customTo: "",
+      };
+    }
+    try {
+      const storedEmpresa = window.localStorage.getItem(STORAGE_EMPRESA);
+      const empresa =
+        storedEmpresa && EMPRESAS.some((e) => e.value === storedEmpresa)
+          ? storedEmpresa
+          : (EMPRESAS[0]?.value ?? "");
+      const storedPeriodo = window.localStorage.getItem(STORAGE_PERIODO);
+      const periodo =
+        storedPeriodo && PERIODOS_VALIDOS.includes(storedPeriodo as PeriodoId)
+          ? (storedPeriodo as PeriodoId)
+          : ("ultimo_mes" as PeriodoId);
+      return {
+        empresa,
+        periodo,
+        customFrom: window.localStorage.getItem(STORAGE_CUSTOM_FROM) ?? "",
+        customTo: window.localStorage.getItem(STORAGE_CUSTOM_TO) ?? "",
+      };
+    } catch {
+      return {
+        empresa: EMPRESAS[0]?.value ?? "",
+        periodo: "ultimo_mes" as PeriodoId,
+        customFrom: "",
+        customTo: "",
+      };
+    }
+  }, []);
+
   // Filters
-  const [empresa, setEmpresa] = useState(EMPRESAS[0]?.value ?? "");
-  const [periodo, setPeriodo] = useState<PeriodoId>("ultimo_mes");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const [empresa, setEmpresa] = useState(persistedFilters.empresa);
+  const [periodo, setPeriodo] = useState<PeriodoId>(persistedFilters.periodo);
+  const [customFrom, setCustomFrom] = useState(persistedFilters.customFrom);
+  const [customTo, setCustomTo] = useState(persistedFilters.customTo);
   const [comercialName, setComercialName] = useState("");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_EMPRESA, empresa);
+      window.localStorage.setItem(STORAGE_PERIODO, periodo);
+      window.localStorage.setItem(STORAGE_CUSTOM_FROM, customFrom);
+      window.localStorage.setItem(STORAGE_CUSTOM_TO, customTo);
+    } catch {
+      // ignore
+    }
+  }, [empresa, periodo, customFrom, customTo]);
 
   // Navigation
   const [activeTab, setActiveTab] = useState<TabId>("resumo");
@@ -176,6 +229,16 @@ export function DashboardShell() {
     () => empreendimentoNomeFromHeaderLabel(empresaLabel),
     [empresaLabel],
   );
+  // O backend do stand-check exige empreendimento_id (int64 > 0). O `empresa`
+  // selecionado é o `codigo_interno_do_empreendimento` em string; a maioria
+  // é numérica, mas alguns rows do JSON vêm sem código (value
+  // "sem-codigo-...") — nesses casos passamos null e o CheckTab bloqueia
+  // a chamada em vez de mandar payload inválido.
+  const empreendimentoId = useMemo<number | null>(() => {
+    if (!empresa || empresa.startsWith("sem-codigo-")) return null;
+    const n = Number.parseInt(empresa, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [empresa]);
   const periodBounds = useMemo(
     () => computePeriodBounds(periodo, customFrom, customTo),
     [periodo, customFrom, customTo],
@@ -286,11 +349,11 @@ export function DashboardShell() {
         <TabsNav active={activeTab} onSelect={setActiveTab} />
 
         <div className="tc" data-active={activeTab === "resumo"}>
-          <HistoricConversionCard
+          {/* <HistoricConversionCard
             key={empresa}
             codigoInterno={empresa}
             nomeSelecionado={empresaLabel}
-          />
+          /> */}
           <CascadeCard
             semana={semana}
             meta={meta}
@@ -309,7 +372,7 @@ export function DashboardShell() {
         </div>
 
         <div className="tc" data-active={activeTab === "checklist"}>
-          <CheckTab comercialName={comercialName} />
+          <CheckTab comercialName={comercialName} empreendimentoId={empreendimentoId} />
         </div>
 
         <div className="tc" data-active={activeTab === "recep"}>

@@ -28,7 +28,11 @@
       "Bash(awk 'BEGIN{RS=\"}\"} /top-actions/{print $0 \"}\"; print \"===\" }')",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 5 http://localhost:3000/dashboard)",
       "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('e:/projetos/jveiga/jveiga-dash-comercial/src/app/globals.css','utf8'\\); const o=\\(c.match\\(/\\\\{/g\\)||[]\\).length, x=\\(c.match\\(/\\\\}/g\\)||[]\\).length; console.log\\('open:', o, 'close:', x, 'balanced:', o===x\\);\")",
-      "Bash(curl -s --max-time 5 -o /tmp/dash.html -w \"status:%{http_code} size:%{size_download} time:%{time_total}\\\\n\" http://localhost:3000/dashboard)"
+      "Bash(curl -s --max-time 5 -o /tmp/dash.html -w \"status:%{http_code} size:%{size_download} time:%{time_total}\\\\n\" http://localhost:3000/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"login=%{http_code}\\\\nregister=%{http_code}\\\\n\" http://localhost:3000/login http://localhost:3000/register)",
+      "Bash(curl -s -o /dev/null -w \"login=%{http_code} register=%{http_code}\\\\n\" http://localhost:3000/login http://localhost:3000/register)",
+      "Bash(curl -s -o /dev/null -w \"login=%{http_code} register=%{http_code} dashboard=%{http_code}\\\\n\" http://localhost:3000/login http://localhost:3000/register http://localhost:3000/dashboard)"
     ]
   }
 }

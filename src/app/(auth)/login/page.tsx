@@ -1,11 +1,14 @@
 "use client";
 
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import type { ApiError } from "@/lib/auth";
+
+import { EditorialPanel } from "../_components/editorial-panel";
 
 function errorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "error" in err) {
@@ -21,6 +24,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [showMfa, setShowMfa] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -55,102 +59,167 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-50">
-            JVeiga Dash Comercial
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Entre com seu email e senha
-          </p>
-        </div>
+    <main className="grid min-h-svh grid-cols-1 bg-white text-slate-900 lg:grid-cols-12">
+      <EditorialPanel />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-100 dark:focus:ring-gray-100/10"
-              placeholder="voce@empresa.com"
-            />
-          </div>
+      <section className="relative flex flex-col px-6 py-10 sm:px-12 lg:col-span-7 lg:px-16 lg:py-12">
+        {/* faint vertical grid */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: "linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px)",
+            backgroundSize: "120px 100%",
+          }}
+        />
 
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
-            >
-              Senha
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-100 dark:focus:ring-gray-100/10"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {showMfa && (
-            <div>
-              <label
-                htmlFor="mfa"
-                className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
-              >
-                Código MFA
-              </label>
-              <input
-                id="mfa"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tracking-widest text-gray-900 transition outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
-                placeholder="123456"
-              />
-            </div>
-          )}
-
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+        <header className="relative z-10 flex items-center justify-between">
+          <Link
+            href="/"
+            className="font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-slate-900"
           >
-            {submitting ? "Entrando..." : "Entrar"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-          Não tem conta?{" "}
+            ACESSO &nbsp;/&nbsp; ENTRAR
+          </Link>
           <Link
             href="/register"
-            className="font-medium text-gray-900 underline-offset-2 hover:underline dark:text-gray-100"
+            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-blue-700"
           >
-            Criar minha conta
+            CRIAR CONTA
+            <ArrowRight className="h-3 w-3 transition group-hover:translate-x-1" aria-hidden />
           </Link>
-        </p>
-      </div>
+        </header>
+
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center py-16">
+          <h1 className="font-sans text-[56px] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[64px]">
+            Faça seu
+            <span className="block font-light text-blue-700">login.</span>
+          </h1>
+          <p className="mt-6 max-w-md text-base leading-relaxed text-slate-500">
+            Use suas credenciais para entrar no painel. Os dados refletem em tempo real o funil, as
+            metas e a performance comercial.
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-14 space-y-9">
+            <FieldRow label="E-MAIL" htmlFor="email">
+              <input
+                id="email"
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-md border border-blue-200 bg-blue-50/40 px-4 py-3 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                placeholder="voce@empresa.com"
+              />
+            </FieldRow>
+
+            <FieldRow label="SENHA" htmlFor="password">
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-md border border-blue-200 bg-blue-50/40 py-3 pr-14 pl-4 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400 transition hover:text-blue-700 focus:text-blue-700 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" aria-hidden />
+                  ) : (
+                    <Eye className="h-5 w-5" aria-hidden />
+                  )}
+                </button>
+              </div>
+            </FieldRow>
+
+            {showMfa && (
+              <FieldRow label="CÓDIGO MFA" htmlFor="mfa">
+                <input
+                  id="mfa"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  className="w-full rounded-md border border-blue-200 bg-blue-50/40 px-4 py-3 text-base tracking-[0.5em] text-slate-900 transition outline-none placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                  placeholder="000000"
+                />
+              </FieldRow>
+            )}
+
+            {error && (
+              <p
+                role="alert"
+                className="flex items-start gap-3 border-l-2 border-rose-500 bg-rose-50/60 py-3 pl-4 text-sm text-rose-700"
+              >
+                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-rose-700/70">
+                  ERRO
+                </span>
+                <span className="text-rose-700">{error}</span>
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="group relative flex w-full items-center justify-between overflow-hidden rounded-sm bg-slate-900 px-6 py-4 text-left text-white transition focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1e40af] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
+              />
+              <span className="relative z-10 font-mono text-[11px] tracking-[0.36em]">
+                {submitting ? "ENTRANDO…" : "ENTRAR"}
+              </span>
+              <ArrowRight
+                className="relative z-10 h-4 w-4 transition group-hover:translate-x-1"
+                aria-hidden
+              />
+            </button>
+          </form>
+
+          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-slate-500">
+            SEM ACESSO?&nbsp;&nbsp;
+            <Link
+              href="/register"
+              className="text-slate-900 underline-offset-[6px] transition hover:text-blue-700 hover:underline"
+            >
+              CRIAR CONTA
+            </Link>
+          </p>
+        </div>
+      </section>
     </main>
+  );
+}
+
+function FieldRow({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={htmlFor}
+        className="mb-2 block font-mono text-[10px] tracking-[0.32em] text-slate-500"
+      >
+        {label}
+      </label>
+      {children}
+    </div>
   );
 }

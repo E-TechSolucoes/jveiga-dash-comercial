@@ -51,6 +51,12 @@ const TOAST_DURATION_MS = 3000;
 
 type Props = {
   comercialName: string;
+  // ID numérico do empreendimento selecionado no topbar. O módulo stand
+  // exige `empreendimento_id` (int64 > 0) em GET e PUT — sem isso o GET
+  // dá 400 e o PUT 422. Quando o código selecionado não é numérico
+  // (ex.: "sem-codigo-..."), o pai passa null e a aba do estande exibe
+  // mensagem em vez de chamar a API.
+  empreendimentoId: number | null;
 };
 
 type StateMap = Record<string, boolean>;
@@ -77,7 +83,7 @@ function countDone(map: StateMap, items: CheckItem[]): number {
   return items.reduce((n, item) => n + (map[item.id] ? 1 : 0), 0);
 }
 
-export function CheckTab({ comercialName }: Props) {
+export function CheckTab({ comercialName, empreendimentoId }: Props) {
   const [sub, setSub] = useState<ChecklistType>("base");
 
   const [log, setLog] = useState<ValidationLogEntry[]>([]);
@@ -126,8 +132,15 @@ export function CheckTab({ comercialName }: Props) {
   useEffect(() => {
     if (sub !== "base") return;
 
+    // Stand exige empreendimento_id. Sem ele não chama a API e a UI mostra
+    // uma mensagem orientando a seleção no topo.
+    if (empreendimentoId == null) return;
+
+    queueMicrotask(() => {
+      setBaseLoading(true);
+    });
     const ctrl = new AbortController();
-    fetchStandCheckItemsToday(ctrl.signal)
+    fetchStandCheckItemsToday(empreendimentoId, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
@@ -156,7 +169,7 @@ export function CheckTab({ comercialName }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub]);
+  }, [sub, empreendimentoId]);
 
   useEffect(() => {
     if (sub !== "diario") return;
@@ -256,6 +269,12 @@ export function CheckTab({ comercialName }: Props) {
 
   const validateBase = async () => {
     if (baseSaving) return;
+    if (empreendimentoId == null) {
+      const msg = "Selecione um empreendimento válido para salvar o checklist do estande.";
+      setBaseSaveError(msg);
+      showToast("error", msg);
+      return;
+    }
 
     // PUT é replace-all: envia a foto completa do dia. Itens omitidos somem,
     // então mandamos todos os items do catálogo com o estado atual da UI.
@@ -274,6 +293,7 @@ export function CheckTab({ comercialName }: Props) {
 
     try {
       const updated = await replaceStandCheckActivity({
+        empreendimento_id: empreendimentoId,
         items: itemsBody,
       });
 
@@ -468,7 +488,6 @@ export function CheckTab({ comercialName }: Props) {
               key={tab.id}
               type="button"
               role="tab"
-              aria-pressed={active}
               aria-selected={active}
               onClick={() => setSub(tab.id)}
               className={`seg-btn${active ? ` seg-btn--${tab.variant}` : ""}`}
@@ -513,7 +532,7 @@ export function CheckTab({ comercialName }: Props) {
           className="val-btn"
           onClick={validate}
           disabled={
-            (sub === "base" && baseSaving) ||
+            (sub === "base" && (baseSaving || empreendimentoId == null)) ||
             (sub === "diario" && diarioSaving) ||
             (sub === "premiacao" && premSaving)
           }
@@ -710,7 +729,11 @@ export function CheckTab({ comercialName }: Props) {
           </div>
         )}
 
-        {sub === "base" && baseLoading ? (
+        {sub === "base" && empreendimentoId == null ? (
+          <div className="ck-empty">
+            Selecione um empreendimento no topo para carregar e salvar o checklist do estande.
+          </div>
+        ) : sub === "base" && baseLoading ? (
           <div className="ck-list" aria-busy="true" aria-live="polite">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>

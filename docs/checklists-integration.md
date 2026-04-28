@@ -1,16 +1,23 @@
 # Checklists — Integração Front-end (unificada)
 
-Doc unificada para implementar **as duas telas** de checklist do produto:
+Doc unificada para implementar **as três telas** de checklist do produto:
 
 | Tela                | Catálogo (admin)    | Atividade (usuário)                            |
 | ------------------- | ------------------- | ---------------------------------------------- |
 | **Stand Checklist** | `stand_check_items` | `stand_check_activity` (1 linha por dia)       |
 | **Daily Checklist** | `check_items_daily` | `check_items_daily_activity` (1 linha por dia) |
+| **Award Checklist** | `check_items_award` | `check_items_award_activity` (1 linha por dia) |
 
-> Ambos os módulos seguem **a mesma arquitetura**. As únicas diferenças
-> entre eles são (1) o catálogo de items que é exibido e (2) os paths das
-> rotas. Tudo o resto — body, validação, regras de `checked_at`, history,
-> formato de erro — é idêntico.
+> Os três módulos seguem **a mesma arquitetura**. As principais diferenças
+> são (1) o catálogo de items que é exibido e (2) os paths das rotas.
+>
+> ⚠️ **Exceção — Stand:** o módulo `stand_check_activity` exige um
+> `empreendimento_id` (int64) em **todas** as operações. A chave passa de
+> `(user_id, day)` para `(user_id, empreendimento_id, day)`, permitindo
+> que o mesmo usuário tenha checklists de stand independentes para
+> empreendimentos diferentes no mesmo dia. Daily e Award **não** têm essa
+> dimensão — continuam sendo `(user_id, day)`. Veja a seção
+> [Stand · empreendimento_id](#stand--empreendimento_id) ao final.
 
 - **Base URL:** `/api/v1`
 - **Content-Type:** `application/json`
@@ -20,19 +27,23 @@ Doc unificada para implementar **as duas telas** de checklist do produto:
 
 ## Endpoints (resumo)
 
-| #   | Método | Path                                                    | Para quê                                                                              |
-| --- | ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 1   | `GET`  | `/api/v1/stand-check-items`                             | Catálogo stand (ativos) + estado de hoje. Sem params. **Tela do dia, leitura única.** |
-| 2   | `PUT`  | `/api/v1/stand-check-activity`                          | Salvar (criar OU atualizar) os checks de um dia do **stand**.                         |
-| 3   | `GET`  | `/api/v1/stand-check-activity/day?day=YYYY-MM-DD`       | Ler o stand de **um dia específico** (com totais).                                    |
-| 4   | `GET`  | `/api/v1/stand-check-activity/history?days=30`          | Resumo (day, total, checked) por dia em que existe linha persistida.                  |
-| 5   | `GET`  | `/api/v1/check-items-daily`                             | Catálogo daily (ativos) + estado de hoje. Sem params. **Tela do dia, leitura única.** |
-| 6   | `PUT`  | `/api/v1/check-items-daily-activity`                    | Salvar (criar OU atualizar) os checks de um dia do **daily**.                         |
-| 7   | `GET`  | `/api/v1/check-items-daily-activity/day?day=YYYY-MM-DD` | Ler o daily de **um dia específico** (com totais).                                    |
-| 8   | `GET`  | `/api/v1/check-items-daily-activity/history?days=30`    | Resumo (day, total, checked) por dia em que existe linha persistida.                  |
+| #   | Método | Path                                                                  | Para quê                                                                              |
+| --- | ------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | `GET`  | `/api/v1/stand-check-items?empreendimento_id=N`                       | Catálogo stand (ativos) + estado de hoje p/ esse empreendimento. **Tela do dia.**     |
+| 2   | `PUT`  | `/api/v1/stand-check-activity`                                        | Salvar (criar OU atualizar) os checks do **stand** num dia × empreendimento.          |
+| 3   | `GET`  | `/api/v1/stand-check-activity/day?empreendimento_id=N&day=YYYY-MM-DD` | Ler o stand de **um dia × empreendimento** específico (com totais).                   |
+| 4   | `GET`  | `/api/v1/stand-check-activity/history?empreendimento_id=N&days=30`    | Resumo por dia em que existe linha p/ (user, empreendimento).                         |
+| 5   | `GET`  | `/api/v1/check-items-daily`                                           | Catálogo daily (ativos) + estado de hoje. Sem params. **Tela do dia, leitura única.** |
+| 6   | `PUT`  | `/api/v1/check-items-daily-activity`                                  | Salvar (criar OU atualizar) os checks de um dia do **daily**.                         |
+| 7   | `GET`  | `/api/v1/check-items-daily-activity/day?day=YYYY-MM-DD`               | Ler o daily de **um dia específico** (com totais).                                    |
+| 8   | `GET`  | `/api/v1/check-items-daily-activity/history?days=30`                  | Resumo (day, total, checked) por dia em que existe linha persistida.                  |
+| 9   | `GET`  | `/api/v1/check-items-award`                                           | Catálogo award (ativos) + estado de hoje. Sem params. **Tela do dia, leitura única.** |
+| 10  | `PUT`  | `/api/v1/check-items-award-activity`                                  | Salvar (criar OU atualizar) os checks de um dia do **award**.                         |
+| 11  | `GET`  | `/api/v1/check-items-award-activity/day?day=YYYY-MM-DD`               | Ler o award de **um dia específico** (com totais).                                    |
+| 12  | `GET`  | `/api/v1/check-items-award-activity/history?days=30`                  | Resumo (day, total, checked) por dia em que existe linha persistida.                  |
 
-> **A tela do dia precisa de UM request só** — `GET /...check-items` (item 1
-> ou 5) já volta o catálogo enriquecido com o estado de hoje. Use `/day` e
+> **A tela do dia precisa de UM request só** — `GET /...check-items*` (item 1, 5
+> ou 9) já volta o catálogo enriquecido com o estado de hoje. Use `/day` e
 > `/history` para visualizar dias arbitrários ou montar gráficos.
 
 ---
@@ -62,11 +73,12 @@ Doc unificada para implementar **as duas telas** de checklist do produto:
 
 ## 1. Carregar a tela do dia
 
-> Mesma forma para os dois módulos — só muda o path.
+> Mesma forma para os três módulos — só muda o path.
 
 ```
 GET /api/v1/stand-check-items         ← stand
 GET /api/v1/check-items-daily         ← daily
+GET /api/v1/check-items-award         ← award
 ```
 
 Devolve **só os itens ATIVOS** do catálogo, cada um já com o estado de
@@ -75,15 +87,24 @@ que o front precisa fazer ao abrir a tela.
 
 ### Query params
 
-**Nenhum.** Os endpoints não aceitam parâmetros — `is_active=true` e
-`day=hoje (BR)` são fixos. O front filtra/destaca localmente os itens
-com `is_checked: true` se quiser separar marcados de não-marcados na UI.
+| Param               | Stand                       | Daily / Award |
+| ------------------- | --------------------------- | ------------- |
+| `empreendimento_id` | **obrigatório** (int64 > 0) | _(não usado)_ |
+
+`is_active=true` e `day=hoje (BR)` continuam fixos para os três módulos —
+o front filtra/destaca localmente os itens com `is_checked: true` se
+quiser separar marcados de não-marcados na UI.
 
 ### Exemplo
 
 ```bash
+# Stand precisa de empreendimento_id
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8080/api/v1/stand-check-items"
+  "http://localhost:8080/api/v1/stand-check-items?empreendimento_id=123"
+
+# Daily / Award não têm essa dimensão
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/check-items-daily"
 ```
 
 ### Resposta — `200 OK`
@@ -136,11 +157,12 @@ Array de items do catálogo, cada um com o estado embutido (formato **flat**):
 
 ## 2. Salvar os checks (criar ou atualizar)
 
-> Mesma forma para os dois módulos — só muda o path.
+> Mesma forma para os três módulos — só muda o path.
 
 ```
 PUT /api/v1/stand-check-activity              ← stand
 PUT /api/v1/check-items-daily-activity        ← daily
+PUT /api/v1/check-items-award-activity        ← award
 ```
 
 **Único endpoint** para salvar — faz upsert idempotente:
@@ -154,6 +176,7 @@ PUT /api/v1/check-items-daily-activity        ← daily
 ### Body — `ReplaceActivityRequest`
 
 ```ts
+// Daily / Award
 {
   day?: string;             // YYYY-MM-DD. Default: hoje (BR — America/Sao_Paulo)
   items: Array<{
@@ -162,10 +185,23 @@ PUT /api/v1/check-items-daily-activity        ← daily
     note?: string;          // ≤ 500 chars
   }>;
 }
+
+// Stand — adiciona empreendimento_id obrigatório
+{
+  empreendimento_id: number; // int64 > 0, OBRIGATÓRIO
+  day?: string;
+  items: Array<{
+    item_id: string;
+    is_checked: boolean;
+    note?: string;
+  }>;
+}
 ```
 
 > ⚠️ **Não envie `user_id` no body.** Ele sai do Bearer token. Qualquer
 > `user_id` que vier no JSON é silenciosamente ignorado.
+> ⚠️ **Stand:** sem `empreendimento_id` válido (> 0), o PUT retorna
+> `422 VALIDATION_ERROR`.
 
 ### Comportamento por item
 
@@ -179,13 +215,14 @@ PUT /api/v1/check-items-daily-activity        ← daily
 | `item_id` inválido (não-UUID)                            | `422 VALIDATION_ERROR`.                      |
 | `note` > 500 chars                                       | `422 VALIDATION_ERROR`.                      |
 
-### Exemplo — salvando o dia de hoje (stand)
+### Exemplo — salvando o dia de hoje (stand, empreendimento 123)
 
 ```bash
 curl -X PUT "http://localhost:8080/api/v1/stand-check-activity" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "empreendimento_id": 123,
     "items": [
       { "item_id": "0f4f0c84-2bc4-4f9d-a3a6-0c1f6b9e7b21", "is_checked": true },
       { "item_id": "9d9c1e9a-3b1f-4d8a-9b1f-6f0d1d2a3b4c", "is_checked": true, "note": "faltando 1 cadeira" },
@@ -241,18 +278,21 @@ A linha persistida (já com `checked_at` populado pelo servidor):
 ## 3. Visualizar um dia específico (com totais)
 
 ```
-GET /api/v1/stand-check-activity/day?day=YYYY-MM-DD
+GET /api/v1/stand-check-activity/day?empreendimento_id=N&day=YYYY-MM-DD
 GET /api/v1/check-items-daily-activity/day?day=YYYY-MM-DD
+GET /api/v1/check-items-award-activity/day?day=YYYY-MM-DD
 ```
 
-`day` é opcional (default = hoje BR). Devolve o catálogo ativo mesclado
-com o estado salvo na linha JSONB do dia + totais.
+`day` é opcional (default = hoje BR). `empreendimento_id` é
+**obrigatório** apenas no stand. Devolve o catálogo ativo mesclado com o
+estado salvo na linha JSONB do dia + totais.
 
-### Resposta — `200 OK`
+### Resposta — `200 OK` (stand inclui `empreendimento_id`)
 
 ```json
 {
   "user_id": "08082cb0-d0ba-48ad-9ef4-4d94c0e9aac0",
+  "empreendimento_id": 123,
   "day": "2026-04-23T00:00:00Z",
   "total_items": 4,
   "checked_count": 2,
@@ -303,6 +343,7 @@ com o estado salvo na linha JSONB do dia + totais.
 ```
 GET /api/v1/stand-check-activity/history?days=30
 GET /api/v1/check-items-daily-activity/history?days=30
+GET /api/v1/check-items-award-activity/history?days=30
 ```
 
 ### Modos de range
@@ -436,10 +477,10 @@ type DaySummary = {
 
 ---
 
-## Pseudocódigo React (genérico — vale para os dois)
+## Pseudocódigo React (genérico — vale para os três)
 
 ```ts
-type Module = "stand" | "daily";
+type Module = "stand" | "daily" | "award";
 
 const paths = {
   stand: {
@@ -449,6 +490,10 @@ const paths = {
   daily: {
     items: "/api/v1/check-items-daily",
     activity: "/api/v1/check-items-daily-activity",
+  },
+  award: {
+    items: "/api/v1/check-items-award",
+    activity: "/api/v1/check-items-award-activity",
   },
 };
 
@@ -560,6 +605,28 @@ CREATE TABLE check_items_daily_activity (
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, day)
 );
+
+-- ── AWARD ────────────────────────────────────────────────────────────
+CREATE TABLE check_items_award (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code          VARCHAR(40)  NOT NULL UNIQUE,
+  label         VARCHAR(160) NOT NULL,
+  icon_name     VARCHAR(40)  NOT NULL,
+  display_order SMALLINT     NOT NULL DEFAULT 0,
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE check_items_award_activity (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     VARCHAR(64)  NOT NULL,
+  day         DATE         NOT NULL,
+  items       JSONB        NOT NULL DEFAULT '[]'::jsonb,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, day)
+);
 ```
 
 Scripts:
@@ -568,22 +635,24 @@ Scripts:
 - [db/sql/stand_check_activity.sql](../db/sql/stand_check_activity.sql)
 - [db/sql/check_items_daily.sql](../db/sql/check_items_daily.sql)
 - [db/sql/check_items_daily_activity.sql](../db/sql/check_items_daily_activity.sql)
+- [db/sql/check_items_award.sql](../db/sql/check_items_award.sql)
+- [db/sql/check_items_award_activity.sql](../db/sql/check_items_award_activity.sql)
 
 ---
 
-## Tabela de equivalência (stand ↔ daily)
+## Tabela de equivalência (stand ↔ daily ↔ award)
 
-| Conceito                       | Stand                                  | Daily                                        |
-| ------------------------------ | -------------------------------------- | -------------------------------------------- |
-| Tabela do catálogo             | `stand_check_items`                    | `check_items_daily`                          |
-| Tabela da atividade            | `stand_check_activity`                 | `check_items_daily_activity`                 |
-| GET catálogo (com estado hoje) | `/api/v1/stand-check-items`            | `/api/v1/check-items-daily`                  |
-| PUT atividade do dia           | `/api/v1/stand-check-activity`         | `/api/v1/check-items-daily-activity`         |
-| GET dia específico             | `/api/v1/stand-check-activity/day`     | `/api/v1/check-items-daily-activity/day`     |
-| GET histórico                  | `/api/v1/stand-check-activity/history` | `/api/v1/check-items-daily-activity/history` |
-| Body do PUT                    | `ReplaceStandCheckActivityRequest`     | `ReplaceCheckItemsDailyActivityRequest`      |
+| Conceito                       | Stand                                  | Daily                                        | Award                                        |
+| ------------------------------ | -------------------------------------- | -------------------------------------------- | -------------------------------------------- |
+| Tabela do catálogo             | `stand_check_items`                    | `check_items_daily`                          | `check_items_award`                          |
+| Tabela da atividade            | `stand_check_activity`                 | `check_items_daily_activity`                 | `check_items_award_activity`                 |
+| GET catálogo (com estado hoje) | `/api/v1/stand-check-items`            | `/api/v1/check-items-daily`                  | `/api/v1/check-items-award`                  |
+| PUT atividade do dia           | `/api/v1/stand-check-activity`         | `/api/v1/check-items-daily-activity`         | `/api/v1/check-items-award-activity`         |
+| GET dia específico             | `/api/v1/stand-check-activity/day`     | `/api/v1/check-items-daily-activity/day`     | `/api/v1/check-items-award-activity/day`     |
+| GET histórico                  | `/api/v1/stand-check-activity/history` | `/api/v1/check-items-daily-activity/history` | `/api/v1/check-items-award-activity/history` |
+| Body do PUT                    | `ReplaceStandCheckActivityRequest`     | `ReplaceCheckItemsDailyActivityRequest`      | `ReplaceCheckItemsAwardActivityRequest`      |
 
-> Os dois módulos compartilham 100% das regras: validação, tratamento de
+> Os três módulos compartilham 100% das regras: validação, tratamento de
 > `checked_at`, formato de resposta, formato de erro, fuso horário (BR),
 > upsert idempotente.
 
