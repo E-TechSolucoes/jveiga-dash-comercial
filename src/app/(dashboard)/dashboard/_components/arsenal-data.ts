@@ -266,7 +266,7 @@ export const OBJECOES: Objecao[] = [
 
 // ============= REGRAS DE OURO =============
 export const REGRAS: string[] = [
-  "Lead não atendido = lead perdido. 15 minutos.",
+  "Lead não atendido = lead perdido. 3 minutos.",
   "CRM é lei. Fora do CV não existe.",
   "A roleta é sagrada.",
   "Ação sem relatório = dinheiro fora.",
