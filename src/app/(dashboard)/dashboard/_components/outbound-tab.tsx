@@ -24,7 +24,6 @@ import {
   weekStartFromSemana,
   type FieldAction,
 } from "@/lib/arsenal/api";
-import { apiFetch } from "@/lib/auth";
 import {
   OUTBOUND_STATUS_LABEL,
   OUTBOUND_STATUS_LIST,
@@ -84,7 +83,6 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
   );
 
   const [week, setWeek] = useState<OutboundWeek | null>(null);
-  const [actions, setActions] = useState<FieldAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,21 +129,16 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
     [weekStart],
   );
 
-  // Load actions catalog once. Filter active + sort by display_order.
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch<FieldAction[]>("/api/v1/field-actions")
-      .then((rows) => {
-        if (cancelled) return;
-        setActions(rows.slice().sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)));
-      })
-      .catch(() => {
-        // Silent: action selects degrade to empty list and disable themselves.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Action selects only show actions that had at least one validated
+  // execution in the selected week — server filters week.roi to that set.
+  const actions = useMemo<FieldAction[]>(
+    () =>
+      (week?.roi ?? [])
+        .map((r) => r.action)
+        .slice()
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
+    [week?.roi],
+  );
 
   useEffect(() => {
     if (!weekStart) return;
