@@ -145,7 +145,7 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
     let cancelled = false;
     listAgencies()
       .then((rows) => {
-        if (!cancelled) setAgencies(rows);
+        if (!cancelled) setAgencies(rows ?? []);
       })
       .catch(() => {
         // Silent: agency dropdown gracefully degrades to "Sem imobiliária".

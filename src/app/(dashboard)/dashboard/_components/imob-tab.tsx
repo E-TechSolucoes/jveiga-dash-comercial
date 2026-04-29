@@ -100,7 +100,7 @@ export function ImobTab() {
     listAgencies()
       .then((rows) => {
         if (cancelled) return;
-        setImobs(rows.map(fromApi));
+        setImobs((rows ?? []).map(fromApi));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -205,7 +205,7 @@ export function ImobTab() {
     try {
       await validateAllAgencies();
       const fresh = await listAgencies();
-      setImobs(fresh.map(fromApi));
+      setImobs((fresh ?? []).map(fromApi));
     } catch (err: unknown) {
       setImobs(prev);
       setToast({ kind: "error", message: extractError(err, "Falha ao validar todas") });

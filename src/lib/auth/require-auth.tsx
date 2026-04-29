@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { useAuth } from "./auth-provider";
 import { readAccessToken } from "./storage";
+
+const noopSubscribe = () => () => {};
 
 type Props = {
   children: React.ReactNode;
@@ -16,8 +18,12 @@ export function RequireAuth({ children, admin = false }: Props) {
   const router = useRouter();
 
   // Optimistic gate: if a token exists in storage, render children right away
-  // so the page can show its own skeletons while the session hydrates.
-  const [hasStoredToken] = useState(() => Boolean(readAccessToken()));
+  // while the session hydrates. Server snapshot is false (no localStorage); client reads storage.
+  const hasStoredToken = useSyncExternalStore(
+    noopSubscribe,
+    () => Boolean(readAccessToken()),
+    () => false,
+  );
 
   useEffect(() => {
     if (loading) return;
