@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   CalendarDays,
@@ -26,6 +27,7 @@ import {
   Swords,
   Target,
   Theater,
+  Pencil,
   Trash2,
   Users,
   X,
@@ -42,6 +44,7 @@ import {
   getArsenalWeek,
   isApiError,
   isoWeekNumber,
+  patchFieldBroker,
   putBrokerStats,
   unvalidateExecution,
   upsertExecution,
@@ -53,6 +56,7 @@ import {
   type ArsenalIconName,
   type ArsenalWeek,
 } from "@/lib/arsenal/api";
+import { listAgencies, type RealEstateAgency } from "@/lib/imob/api";
 
 type Filter = "acao" | "treinamento" | "todos";
 
@@ -132,9 +136,24 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [novoNome, setNovoNome] = useState("");
-  const [novaImob, setNovaImob] = useState("");
+  const [novaImob, setNovaImob] = useState(""); // agency id (uuid) or "" for none
   const [novoCel, setNovoCel] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const [agencies, setAgencies] = useState<RealEstateAgency[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listAgencies()
+      .then((rows) => {
+        if (!cancelled) setAgencies(rows);
+      })
+      .catch(() => {
+        // Silent: agency dropdown gracefully degrades to "Sem imobiliária".
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [statDrafts, setStatDrafts] = useState<Record<string, StatDraft>>({});
   const [pendingSlot, setPendingSlot] = useState<Record<string, boolean>>({});
@@ -224,7 +243,7 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
     try {
       await createFieldBroker({
         nome,
-        imobiliaria: novaImob.trim() || undefined,
+        real_estate_agency_id: novaImob || null,
         celular: novoCel.trim() || undefined,
       });
       setNovoNome("");
@@ -236,6 +255,29 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
       showToast("error", errorMessage(e));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const [editingBroker, setEditingBroker] = useState<ArsenalBroker | null>(null);
+
+  const saveBrokerEdit = async (
+    broker: ArsenalBroker,
+    next: { real_estate_agency_id: string | null; celular: string | null },
+  ) => {
+    setPendingBroker((prev) => ({ ...prev, [broker.broker_id]: true }));
+    try {
+      await patchFieldBroker(broker.broker_id, next);
+      setEditingBroker(null);
+      await loadWeek();
+      showToast("success", `Corretor ${broker.nome} atualizado.`);
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setPendingBroker((prev) => {
+        const copy = { ...prev };
+        delete copy[broker.broker_id];
+        return copy;
+      });
     }
   };
 
@@ -390,6 +432,7 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
       <BrokersCard
         loading={loading}
         brokers={apiBrokers}
+        agencies={agencies}
         statDrafts={statDrafts}
         pendingBroker={pendingBroker}
         novoNome={novoNome}
@@ -403,7 +446,18 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
         onSetStatDraft={setStatDraft}
         onFlushStats={flushBrokerStats}
         onRemove={removeCorretor}
+        onEdit={(broker) => setEditingBroker(broker)}
       />
+
+      {editingBroker && (
+        <BrokerEditDialog
+          broker={editingBroker}
+          agencies={agencies}
+          pending={!!pendingBroker[editingBroker.broker_id]}
+          onCancel={() => setEditingBroker(null)}
+          onSave={saveBrokerEdit}
+        />
+      )}
 
       <SemNav
         loading={loading || !weekStart}
@@ -484,6 +538,7 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
 type BrokersCardProps = {
   loading: boolean;
   brokers: ArsenalBroker[];
+  agencies: RealEstateAgency[];
   statDrafts: Record<string, StatDraft>;
   pendingBroker: Record<string, boolean>;
   novoNome: string;
@@ -497,11 +552,13 @@ type BrokersCardProps = {
   onSetStatDraft: (brokerId: string, field: StatField, value: number) => void;
   onFlushStats: (broker: ArsenalBroker) => void;
   onRemove: (broker: ArsenalBroker) => void;
+  onEdit: (broker: ArsenalBroker) => void;
 };
 
 function BrokersCard({
   loading,
   brokers,
+  agencies,
   statDrafts,
   pendingBroker,
   novoNome,
@@ -515,6 +572,7 @@ function BrokersCard({
   onSetStatDraft,
   onFlushStats,
   onRemove,
+  onEdit,
 }: BrokersCardProps) {
   return (
     <section className="data-card">
@@ -545,13 +603,23 @@ function BrokersCard({
         </label>
         <label className="field">
           <span className="field-label">Imobiliária</span>
-          <input
+          <select
             className="field-input"
             value={novaImob}
             onChange={(e) => onImobChange(e.target.value)}
-            placeholder="Ex: VENDEU"
-            disabled={creating}
-          />
+            disabled={creating || agencies.length === 0}
+          >
+            <option value="">
+              {agencies.length === 0
+                ? "Cadastre uma imobiliária na aba Imobiliárias"
+                : "— Sem imobiliária —"}
+            </option>
+            {agencies.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span className="field-label">Celular</span>
@@ -574,13 +642,7 @@ function BrokersCard({
             <tr>
               <th>Corretor</th>
               <th>Imob.</th>
-              <th title="Indicações">Ind</th>
-              <th title="Visitas">Vis</th>
-              <th title="Pastas">Pas</th>
-              <th title="Pastas Aprovadas">PA</th>
-              <th title="Vendas">Ven</th>
-              <th>Pts</th>
-              <th>Nível</th>
+              <th>Celular</th>
               <th aria-label="Ações" />
             </tr>
           </thead>
@@ -589,51 +651,34 @@ function BrokersCard({
               <BrokerRowsSkeleton />
             ) : brokers.length === 0 ? (
               <tr>
-                <td colSpan={10} className="data-table-empty">
+                <td colSpan={4} className="data-table-empty">
                   Nenhum corretor cadastrado ainda — adicione acima.
                 </td>
               </tr>
             ) : (
               brokers.map((broker) => {
-                const draft = statDrafts[broker.broker_id] ?? {};
                 const isPending = !!pendingBroker[broker.broker_id];
-                const fieldValue = (field: StatField) => draft[field] ?? broker[field];
                 return (
                   <tr key={broker.broker_id} data-pending={isPending}>
                     <td className="cell-strong">
                       <div className="corr-name">{broker.nome}</div>
-                      {broker.celular && <div className="corr-tel">{broker.celular}</div>}
                     </td>
                     <td>
                       <span className="chip-soft" data-accent="blue">
                         {broker.imobiliaria || "—"}
                       </span>
                     </td>
-                    {(["ind", "vis", "pas", "pas_aprov", "vendas"] as StatField[]).map((field) => (
-                      <td key={field} className="cell-num">
-                        <input
-                          type="number"
-                          min={0}
-                          value={fieldValue(field)}
-                          className="cell-input cell-input--xs"
-                          disabled={isPending}
-                          onChange={(e) =>
-                            onSetStatDraft(broker.broker_id, field, Number(e.target.value) || 0)
-                          }
-                          onBlur={() => onFlushStats(broker)}
-                        />
-                      </td>
-                    ))}
-                    <td className="cell-num cell-strong corr-pts">{broker.pts}</td>
-                    <td>
-                      <span
-                        className="nivel-badge"
-                        data-accent={NIVEL_ACCENT[broker.nivel as Nivel]}
-                      >
-                        {broker.nivel}
-                      </span>
-                    </td>
+                    <td>{broker.celular || "—"}</td>
                     <td className="cell-actions">
+                      <button
+                        type="button"
+                        className="icon-action"
+                        onClick={() => onEdit(broker)}
+                        disabled={isPending}
+                        aria-label={`Editar ${broker.nome}`}
+                      >
+                        <Pencil size={14} strokeWidth={1.75} />
+                      </button>
                       <button
                         type="button"
                         className="icon-action icon-action--danger"
@@ -653,6 +698,149 @@ function BrokersCard({
       </div>
     </section>
   );
+}
+
+type BrokerEditDialogProps = {
+  broker: ArsenalBroker;
+  agencies: RealEstateAgency[];
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (
+    broker: ArsenalBroker,
+    next: { real_estate_agency_id: string | null; celular: string | null },
+  ) => void;
+};
+
+function BrokerEditDialog({ broker, agencies, pending, onCancel, onSave }: BrokerEditDialogProps) {
+  const [agencyId, setAgencyId] = useState<string>(broker.real_estate_agency_id ?? "");
+  const [celular, setCelular] = useState<string>(broker.celular ?? "");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    globalThis.addEventListener("keydown", onKey);
+    return () => globalThis.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = celular.trim();
+    onSave(broker, {
+      real_estate_agency_id: agencyId || null,
+      celular: trimmed === "" ? null : trimmed,
+    });
+  };
+
+  if (typeof document === "undefined") return null;
+
+  const backdrop: CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(8, 12, 24, 0.55)",
+    backdropFilter: "blur(2px)",
+    display: "grid",
+    placeItems: "center",
+    zIndex: 1000,
+    padding: "16px",
+  };
+  const card: CSSProperties = {
+    background: "var(--surface, #fff)",
+    color: "var(--text, #0f172a)",
+    width: "min(420px, 100%)",
+    borderRadius: 12,
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.35)",
+    border: "1px solid var(--border, #e2e8f0)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  };
+  const head: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "14px 16px",
+    borderBottom: "1px solid var(--border, #e2e8f0)",
+  };
+  const title: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
+  const body: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 12,
+    padding: 16,
+  };
+  const foot: CSSProperties = {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+    padding: "12px 16px",
+    borderTop: "1px solid var(--border, #e2e8f0)",
+  };
+
+  const node = (
+    <div
+      style={backdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="broker-edit-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <form style={card} onSubmit={handleSubmit}>
+        <header style={head}>
+          <h3 id="broker-edit-title" style={title}>
+            Editar {broker.nome}
+          </h3>
+          <button type="button" className="icon-action" aria-label="Fechar" onClick={onCancel}>
+            <X size={16} strokeWidth={1.75} />
+          </button>
+        </header>
+
+        <div style={body}>
+          <label className="field">
+            <span className="field-label">Imobiliária</span>
+            <select
+              className="field-input"
+              value={agencyId}
+              onChange={(e) => setAgencyId(e.target.value)}
+              disabled={pending}
+            >
+              <option value="">— Sem imobiliária —</option>
+              {agencies.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">Celular</span>
+            <input
+              type="tel"
+              className="field-input"
+              value={celular}
+              onChange={(e) => setCelular(e.target.value)}
+              placeholder="(11) 99999-9999"
+              disabled={pending}
+            />
+          </label>
+        </div>
+
+        <footer style={foot}>
+          <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={pending}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn--primary" disabled={pending}>
+            {pending ? "Salvando..." : "Salvar"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+
+  return createPortal(node, document.body);
 }
 
 function BrokerRowsSkeleton() {

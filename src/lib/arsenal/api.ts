@@ -47,7 +47,8 @@ export type FieldAction = {
 export type ArsenalParticipant = {
   broker_id: string;
   nome: string;
-  imobiliaria: string | null;
+  real_estate_agency_id: string | null;
+  imobiliaria: string;
   celular: string | null;
 };
 
@@ -65,7 +66,8 @@ export type ArsenalExecution = {
 export type ArsenalBroker = {
   broker_id: string;
   nome: string;
-  imobiliaria: string | null;
+  real_estate_agency_id: string | null;
+  imobiliaria: string;
   celular: string | null;
   is_active: boolean;
   ind: number;
@@ -105,7 +107,7 @@ export function getArsenalWeek(weekStart?: string): Promise<ArsenalWeek> {
 
 export type CreateBrokerPayload = {
   nome: string;
-  imobiliaria?: string;
+  real_estate_agency_id?: string | null;
   celular?: string;
 };
 
@@ -118,12 +120,12 @@ export function createFieldBroker(payload: CreateBrokerPayload) {
 
 export type PatchBrokerPayload = Partial<{
   nome: string;
-  imobiliaria: string | null;
+  real_estate_agency_id: string | null;
   celular: string | null;
   is_active: boolean;
 }>;
 
-export function patchFieldBroker(id: string, payload: PatchBrokerPayload) {
+export function patchFieldBroker(id: string, payload: PatchBrokerPayload): Promise<unknown> {
   return apiFetch(`/api/v1/field-brokers/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),

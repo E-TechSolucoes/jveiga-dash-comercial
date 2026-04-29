@@ -459,7 +459,7 @@ export function DashboardShell() {
         </div>
 
         <div className="tc" data-active={activeTab === "outbound"}>
-          <OutboundTab />
+          <OutboundTab semana={semana} onSemanaChange={setSemana} />
         </div>
 
         <div className="tc" data-active={activeTab === "imob"}>

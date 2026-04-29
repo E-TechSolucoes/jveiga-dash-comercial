@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Info,
   Plus,
@@ -14,195 +17,367 @@ import {
 } from "lucide-react";
 
 import { fmt } from "./types";
+import { Toast, type ToastKind } from "./toast";
+import {
+  isApiError,
+  isoWeekNumber,
+  weekStartFromSemana,
+  type FieldAction,
+} from "@/lib/arsenal/api";
+import {
+  OUTBOUND_STATUS_LABEL,
+  OUTBOUND_STATUS_LIST,
+  createLead,
+  deleteLead,
+  getOutboundWeek,
+  importLeadsSpreadsheet,
+  patchLead,
+  upsertCost,
+  validateAllLeads,
+  validateCost,
+  type OutboundLead,
+  type OutboundRoiRow,
+  type OutboundStatus,
+  type OutboundWeek,
+} from "@/lib/outbound/api";
 
-type LeadStatus = "Novo" | "Contatado" | "Agendado" | "Visitou" | "Pasta" | "Venda";
+const TOAST_DURATION_MS = 3000;
 
-type Acao = { id: string; label: string };
-
-type Lead = {
-  id: string;
-  nome: string;
-  tel: string;
-  acaoId: string;
-  corretor: string;
-  status: LeadStatus;
-  data: string;
-  validated: boolean;
+type Props = {
+  semana: number;
+  onSemanaChange: (next: number) => void;
 };
 
-type RoiRow = {
-  id: string;
-  acao: string;
-  custo: number;
-  custoReal: number;
-  leads: number;
-  visitas: number;
-  vendas: number;
-  vgv: number;
-  validated: boolean;
-};
-
-const STATUS_OPTIONS: LeadStatus[] = ["Novo", "Contatado", "Agendado", "Visitou", "Pasta", "Venda"];
-
-const ACOES_MOCK: Acao[] = [
-  { id: "blitz-guara", label: "Panfletagem · Feira do Guará" },
-  { id: "port-lago", label: "Portaria · Cond. Lago Sul" },
-  { id: "evento-stand", label: "Evento · Stand Shopping" },
-  { id: "ig-ads", label: "Digital · Instagram Ads" },
-];
-
-const LEADS_MOCK: Lead[] = [
-  {
-    id: "l1",
-    nome: "Roberto Alves",
-    tel: "(61) 99812-3456",
-    acaoId: "blitz-guara",
-    corretor: "Ana",
-    status: "Agendado",
-    data: "17/03",
-    validated: true,
-  },
-  {
-    id: "l2",
-    nome: "Fernanda Costa",
-    tel: "(61) 98765-4321",
-    acaoId: "port-lago",
-    corretor: "Carlos",
-    status: "Contatado",
-    data: "18/03",
-    validated: true,
-  },
-  {
-    id: "l3",
-    nome: "Pedro Henrique",
-    tel: "(61) 99321-6543",
-    acaoId: "blitz-guara",
-    corretor: "Ana",
-    status: "Venda",
-    data: "17/03",
-    validated: true,
-  },
-];
-
-const ROI_MOCK: RoiRow[] = [
-  {
-    id: "r1",
-    acao: "Panfletagem · Feira do Guará",
-    custo: 1200,
-    custoReal: 0,
-    leads: 12,
-    visitas: 3,
-    vendas: 1,
-    vgv: 420_000,
-    validated: false,
-  },
-  {
-    id: "r2",
-    acao: "Portaria · Cond. Lago Sul",
-    custo: 800,
-    custoReal: 0,
-    leads: 8,
-    visitas: 2,
-    vendas: 0,
-    vgv: 0,
-    validated: false,
-  },
-  {
-    id: "r3",
-    acao: "Evento · Stand Shopping",
-    custo: 3500,
-    custoReal: 0,
-    leads: 15,
-    visitas: 5,
-    vendas: 2,
-    vgv: 890_000,
-    validated: false,
-  },
-  {
-    id: "r4",
-    acao: "Digital · Instagram Ads",
-    custo: 4200,
-    custoReal: 0,
-    leads: 22,
-    visitas: 4,
-    vendas: 1,
-    vgv: 385_000,
-    validated: false,
-  },
-];
-
-function todayBr(): string {
-  return new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+function errorMessage(err: unknown): string {
+  if (isApiError(err)) return err.error;
+  if (err instanceof Error) return err.message;
+  return "Falha na operação.";
 }
 
-function acaoLabel(id: string): string {
-  return ACOES_MOCK.find((a) => a.id === id)?.label ?? "—";
+function toBrDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
 }
 
-export function OutboundTab() {
-  const [leads, setLeads] = useState<Lead[]>(LEADS_MOCK);
-  const [roi, setRoi] = useState<RoiRow[]>(ROI_MOCK);
+function endOfWeek(weekStartISO: string): string {
+  const [y, m, d] = weekStartISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 6);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function OutboundTab({ semana, onSemanaChange }: Props) {
+  // Defer weekStart computation to client mount: depends on Date in BR tz,
+  // so SSR vs first client render would diverge.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+  const weekStart = useMemo(
+    () => (mounted ? weekStartFromSemana(semana) : null),
+    [mounted, semana],
+  );
+
+  const [week, setWeek] = useState<OutboundWeek | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [novoNome, setNovoNome] = useState("");
   const [novoTel, setNovoTel] = useState("");
   const [novoAcao, setNovoAcao] = useState<string>("");
-  const [novoCorretor, setNovoCorretor] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  const novosCount = useMemo(() => leads.filter((l) => l.status === "Novo").length, [leads]);
+  const [importAcao, setImportAcao] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const addLead = () => {
+  const [toast, setToast] = useState<{ kind: ToastKind; message: string; key: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+  const showToast = (kind: ToastKind, message: string) =>
+    setToast({ kind, message, key: Date.now() });
+
+  const reqIdRef = useRef(0);
+
+  const loadWeek = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!weekStart) return;
+      const id = ++reqIdRef.current;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getOutboundWeek(weekStart);
+        if (signal?.aborted || id !== reqIdRef.current) return;
+        setWeek(data);
+      } catch (e: unknown) {
+        if (signal?.aborted || id !== reqIdRef.current) return;
+        setWeek(null);
+        setError(errorMessage(e));
+      } finally {
+        if (!signal?.aborted && id === reqIdRef.current) setLoading(false);
+      }
+    },
+    [weekStart],
+  );
+
+  // Action selects only show actions that had at least one validated
+  // execution in the selected week — server filters week.roi to that set.
+  const actions = useMemo<FieldAction[]>(
+    () =>
+      (week?.roi ?? [])
+        .map((r) => r.action)
+        .slice()
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
+    [week?.roi],
+  );
+
+  useEffect(() => {
+    if (!weekStart) return;
+    const ac = new AbortController();
+    queueMicrotask(() => {
+      void loadWeek(ac.signal);
+    });
+    return () => ac.abort();
+  }, [weekStart, loadWeek]);
+
+  const leads = useMemo(() => week?.leads ?? [], [week?.leads]);
+  const roi = useMemo(() => week?.roi ?? [], [week?.roi]);
+  const novosCount = useMemo(() => leads.filter((l) => l.status === "new").length, [leads]);
+
+  const addLead = async () => {
+    if (!weekStart) return;
     if (!novoNome.trim()) {
-      window.alert("Preencha o nome do lead.");
+      showToast("error", "Preencha o nome do lead.");
       return;
     }
-    setLeads((prev) => [
-      ...prev,
-      {
-        id: `l-${Date.now()}`,
-        nome: novoNome.trim(),
-        tel: novoTel.trim(),
-        acaoId: novoAcao,
-        corretor: novoCorretor.trim(),
-        status: "Novo",
-        data: todayBr(),
-        validated: false,
-      },
-    ]);
-    setNovoNome("");
-    setNovoTel("");
-    setNovoAcao("");
-    setNovoCorretor("");
+    if (!novoAcao) {
+      showToast("error", "Selecione a ação para o lead.");
+      return;
+    }
+    setCreating(true);
+    try {
+      await createLead({
+        week_start: weekStart,
+        action_id: novoAcao,
+        name: novoNome.trim(),
+        phone: novoTel.trim(),
+      });
+      setNovoNome("");
+      setNovoTel("");
+      setNovoAcao("");
+      await loadWeek();
+      showToast("success", "Lead cadastrado.");
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const updateStatus = (id: string, status: LeadStatus) => {
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status, validated: false } : l)));
+  const handleFileChosen = async (file: File | null) => {
+    if (!file || !weekStart) return;
+    if (!importAcao) {
+      showToast("error", "Selecione a ação antes de enviar a planilha.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await importLeadsSpreadsheet({
+        file,
+        action_id: importAcao,
+        week_start: weekStart,
+      });
+      await loadWeek();
+      const skippedNote = res.skipped > 0 ? ` (${res.skipped} ignorados sem nome)` : "";
+      showToast("success", `${res.imported} leads importados${skippedNote}.`);
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
-  const validateLead = (id: string) => {
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, validated: true } : l)));
-  };
-
-  const validateAllLeads = () => {
-    setLeads((prev) => prev.map((l) => ({ ...l, validated: true })));
-  };
-
-  const deleteLead = (id: string) => {
-    setLeads((prev) => prev.filter((l) => l.id !== id));
-  };
-
-  const updateRoi = (id: string, field: "custo" | "custoReal", value: number) => {
-    setRoi((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value, validated: false } : r)),
+  const updateStatus = async (id: string, status: OutboundStatus) => {
+    const prev = week;
+    setWeek((w) =>
+      w
+        ? {
+            ...w,
+            leads: w.leads.map((l) => (l.id === id ? { ...l, status, validated: false } : l)),
+          }
+        : w,
     );
+    try {
+      const updated = await patchLead(id, { status });
+      setWeek((w) => (w ? { ...w, leads: w.leads.map((l) => (l.id === id ? updated : l)) } : w));
+    } catch (e: unknown) {
+      setWeek(prev);
+      showToast("error", errorMessage(e));
+    }
   };
 
-  const validateRoi = (id: string) => {
-    setRoi((prev) => prev.map((r) => (r.id === id ? { ...r, validated: true } : r)));
+  const validateOne = async (id: string) => {
+    try {
+      const updated = await patchLead(id, { validated: true });
+      setWeek((w) => (w ? { ...w, leads: w.leads.map((l) => (l.id === id ? updated : l)) } : w));
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    }
   };
 
-  const validateAllRoi = () => {
-    setRoi((prev) => prev.map((r) => ({ ...r, validated: true })));
+  const validateAll = async () => {
+    if (!weekStart) return;
+    try {
+      await validateAllLeads(weekStart);
+      await loadWeek();
+      showToast("success", "Todos os leads validados.");
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    }
   };
+
+  const removeLead = async (id: string) => {
+    const prev = week;
+    setWeek((w) => (w ? { ...w, leads: w.leads.filter((l) => l.id !== id) } : w));
+    try {
+      await deleteLead(id);
+    } catch (e: unknown) {
+      setWeek(prev);
+      showToast("error", errorMessage(e));
+    }
+  };
+
+  // -------- ROI editing --------
+
+  const costTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = costTimers.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
+
+  const editRoi = (
+    actionId: string,
+    field: "cost_planned" | "cost_real" | "vgv",
+    value: number,
+  ) => {
+    const next = Math.max(0, value);
+    setWeek((w) =>
+      w
+        ? {
+            ...w,
+            roi: w.roi.map((r) =>
+              r.action.id === actionId ? { ...r, [field]: next, validated: false } : r,
+            ),
+          }
+        : w,
+    );
+
+    if (!weekStart) return;
+    const timers = costTimers.current;
+    const existing = timers.get(actionId);
+    if (existing) clearTimeout(existing);
+    const t = setTimeout(() => {
+      timers.delete(actionId);
+      const row = (week?.roi ?? []).find((r) => r.action.id === actionId);
+      const draft = {
+        cost_planned: row?.cost_planned ?? 0,
+        cost_real: row?.cost_real ?? 0,
+        vgv: row?.vgv ?? 0,
+        [field]: next,
+      } as { cost_planned: number; cost_real: number; vgv: number };
+      upsertCost({
+        week_start: weekStart,
+        action_id: actionId,
+        ...draft,
+      })
+        .then((cost) => {
+          setWeek((w) =>
+            w
+              ? {
+                  ...w,
+                  roi: w.roi.map((r) =>
+                    r.action.id === actionId
+                      ? {
+                          ...r,
+                          cost_id: cost.id,
+                          cost_planned: cost.cost_planned,
+                          cost_real: cost.cost_real,
+                          vgv: cost.vgv,
+                          validated: cost.validated,
+                        }
+                      : r,
+                  ),
+                }
+              : w,
+          );
+        })
+        .catch((e: unknown) => showToast("error", errorMessage(e)));
+    }, 400);
+    timers.set(actionId, t);
+  };
+
+  const validateRoi = async (actionId: string) => {
+    if (!weekStart) return;
+    const row = roi.find((r) => r.action.id === actionId);
+    if (!row) return;
+    try {
+      // Make sure the row exists in the DB before flipping validated.
+      const cost = row.cost_id
+        ? await validateCost(row.cost_id)
+        : await upsertCost({
+            week_start: weekStart,
+            action_id: actionId,
+            cost_planned: row.cost_planned,
+            cost_real: row.cost_real,
+            vgv: row.vgv,
+          }).then((c) => validateCost(c.id));
+      setWeek((w) =>
+        w
+          ? {
+              ...w,
+              roi: w.roi.map((r) =>
+                r.action.id === actionId
+                  ? { ...r, cost_id: cost.id, validated: cost.validated }
+                  : r,
+              ),
+            }
+          : w,
+      );
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    }
+  };
+
+  const validateAllRoi = async () => {
+    for (const r of roi) {
+      // Sequential to avoid hammering the DB and to keep error messages
+      // in order with the row that failed.
+      try {
+        await validateRoi(r.action.id);
+      } catch {
+        // already toasted by validateRoi
+      }
+    }
+  };
+
+  // -------- render --------
+
+  const weekNumber = weekStart ? isoWeekNumber(weekStart) : null;
+  const weekEnd = weekStart ? endOfWeek(weekStart) : null;
+  const intervalo = weekStart && weekEnd ? `${toBrDate(weekStart)} — ${toBrDate(weekEnd)}` : "—";
 
   return (
     <>
@@ -215,6 +390,45 @@ export function OutboundTab() {
         </div>
       </div>
 
+      {error && (
+        <div className="info-banner" data-state="error">
+          <Info size={16} strokeWidth={2} />
+          <div>{error}</div>
+        </div>
+      )}
+
+      <div className="sem-nav">
+        <button
+          type="button"
+          className="sem-nav-btn"
+          onClick={() => onSemanaChange(semana - 1)}
+          aria-label="Semana anterior"
+        >
+          <ChevronLeft size={16} strokeWidth={2} />
+        </button>
+        <div className="sem-nav-body">
+          <div className="sem-nav-title">
+            <CalendarDays size={14} strokeWidth={1.75} />{" "}
+            {weekNumber == null ? (
+              <span className="sk-line sk-line--xs sk-pulse" />
+            ) : (
+              <>Semana {weekNumber} do ano</>
+            )}
+          </div>
+          <div className="sem-nav-sub">
+            {loading ? <span className="sk-line sk-line--sm sk-pulse" /> : intervalo}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="sem-nav-btn"
+          onClick={() => onSemanaChange(semana + 1)}
+          aria-label="Próxima semana"
+        >
+          <ChevronRight size={16} strokeWidth={2} />
+        </button>
+      </div>
+
       <div className="ob-grid">
         <section className="ob-card" data-accent="amber">
           <header className="ob-card-head">
@@ -223,25 +437,38 @@ export function OutboundTab() {
             </span>
             <div>
               <div className="ob-card-title">Importar leads</div>
-              <div className="ob-card-sub">Vincule a planilha à ação correspondente.</div>
+              <div className="ob-card-sub">
+                Selecione a ação, depois envie a planilha (XLSX, XLS ou CSV).
+              </div>
             </div>
           </header>
           <label className="field" style={{ marginBottom: 12 }}>
             <span className="field-label">Vincular à ação</span>
-            <select className="field-input">
+            <select
+              className="field-input"
+              value={importAcao}
+              onChange={(e) => setImportAcao(e.target.value)}
+              disabled={importing || actions.length === 0}
+            >
               <option value="">— Selecione a ação —</option>
-              {ACOES_MOCK.map((a) => (
+              {actions.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.label}
+                  {a.nome}
                 </option>
               ))}
             </select>
           </label>
-          <label className="upload-drop">
-            <input type="file" accept=".xlsx,.xls,.csv" />
+          <label className="upload-drop" data-disabled={!importAcao || importing}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              disabled={!importAcao || importing}
+              onChange={(e) => handleFileChosen(e.target.files?.[0] ?? null)}
+            />
             <Upload size={20} strokeWidth={1.75} />
-            <strong>Importar planilha</strong>
-            <span>XLSX, XLS ou CSV</span>
+            <strong>{importing ? "Importando..." : "Importar planilha"}</strong>
+            <span>XLSX, XLS ou CSV — colunas reconhecidas: nome, telefone</span>
           </label>
         </section>
 
@@ -263,6 +490,7 @@ export function OutboundTab() {
                 value={novoNome}
                 onChange={(e) => setNovoNome(e.target.value)}
                 placeholder="Nome do lead"
+                disabled={creating}
               />
             </label>
             <label className="field">
@@ -272,6 +500,7 @@ export function OutboundTab() {
                 value={novoTel}
                 onChange={(e) => setNovoTel(e.target.value)}
                 placeholder="(00) 00000-0000"
+                disabled={creating}
               />
             </label>
             <label className="field">
@@ -280,27 +509,24 @@ export function OutboundTab() {
                 className="field-input"
                 value={novoAcao}
                 onChange={(e) => setNovoAcao(e.target.value)}
+                disabled={creating || actions.length === 0}
               >
                 <option value="">— Selecione —</option>
-                {ACOES_MOCK.map((a) => (
+                {actions.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.label}
+                    {a.nome}
                   </option>
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span className="field-label">Corretor</span>
-              <input
-                className="field-input"
-                value={novoCorretor}
-                onChange={(e) => setNovoCorretor(e.target.value)}
-                placeholder="Nome do corretor"
-              />
-            </label>
           </div>
-          <button type="button" className="btn btn--primary btn--full" onClick={addLead}>
-            <Plus size={15} strokeWidth={2.25} /> Adicionar lead
+          <button
+            type="button"
+            className="btn btn--primary btn--full"
+            onClick={addLead}
+            disabled={creating}
+          >
+            <Plus size={15} strokeWidth={2.25} /> {creating ? "Salvando..." : "Adicionar lead"}
           </button>
         </section>
       </div>
@@ -322,7 +548,7 @@ export function OutboundTab() {
             <h2 className="data-card-title">Leads ({leads.length})</h2>
             <p className="data-card-sub">Atualize o status conforme o atendimento avança.</p>
           </div>
-          <button type="button" className="btn btn--success btn--sm" onClick={validateAllLeads}>
+          <button type="button" className="btn btn--success btn--sm" onClick={validateAll}>
             <ShieldCheck size={14} strokeWidth={2.25} /> Validar todos
           </button>
         </header>
@@ -334,7 +560,6 @@ export function OutboundTab() {
                 <th>Nome</th>
                 <th>Telefone</th>
                 <th>Ação</th>
-                <th>Corretor</th>
                 <th>Status</th>
                 <th>Data</th>
                 <th>Base JV</th>
@@ -342,63 +567,28 @@ export function OutboundTab() {
               </tr>
             </thead>
             <tbody>
-              {leads.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={8} className="data-table-empty">
-                    Nenhum lead cadastrado.
+                  <td colSpan={7} className="data-table-empty">
+                    Carregando...
+                  </td>
+                </tr>
+              ) : leads.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="data-table-empty">
+                    Nenhum lead cadastrado nesta semana.
                   </td>
                 </tr>
               ) : (
                 leads.map((l) => (
-                  <tr key={l.id}>
-                    <td className="cell-strong">{l.nome}</td>
-                    <td className="cell-mute">{l.tel || "—"}</td>
-                    <td>
-                      <span className="chip-soft" data-accent="amber">
-                        {acaoLabel(l.acaoId)}
-                      </span>
-                    </td>
-                    <td>{l.corretor || "—"}</td>
-                    <td>
-                      <select
-                        className="status-select"
-                        value={l.status}
-                        onChange={(e) => updateStatus(l.id, e.target.value as LeadStatus)}
-                      >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="cell-mute">{l.data}</td>
-                    <td>
-                      {l.validated ? (
-                        <span className="status-pill" data-state="ok">
-                          <ShieldCheck size={12} strokeWidth={2} /> Salvo
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn--success btn--xs"
-                          onClick={() => validateLead(l.id)}
-                        >
-                          <Check size={12} strokeWidth={2.25} /> Validar
-                        </button>
-                      )}
-                    </td>
-                    <td className="cell-actions">
-                      <button
-                        type="button"
-                        className="icon-action icon-action--danger"
-                        onClick={() => deleteLead(l.id)}
-                        aria-label={`Remover ${l.nome}`}
-                      >
-                        <Trash2 size={14} strokeWidth={1.75} />
-                      </button>
-                    </td>
-                  </tr>
+                  <LeadRow
+                    key={l.id}
+                    lead={l}
+                    actions={actions}
+                    onStatusChange={updateStatus}
+                    onValidate={validateOne}
+                    onRemove={removeLead}
+                  />
                 ))
               )}
             </tbody>
@@ -413,7 +603,7 @@ export function OutboundTab() {
               <CircleDollarSign size={18} strokeWidth={2} /> ROI por ação
             </h2>
             <p className="data-card-sub">
-              Conectado ao Arsenal — leads, visitas e vendas vêm do CV. Preencha os custos.
+              Leads, visitas e vendas vêm dos leads outbound da semana. Preencha custos e VGV.
             </p>
           </div>
           <button type="button" className="btn btn--success btn--sm" onClick={validateAllRoi}>
@@ -437,62 +627,156 @@ export function OutboundTab() {
               </tr>
             </thead>
             <tbody>
-              {roi.map((r) => {
-                const cost = r.custoReal > 0 ? r.custoReal : r.custo;
-                const roiValue =
-                  cost > 0 && r.vgv > 0 ? `${(((r.vgv - cost) / cost) * 100).toFixed(0)}%` : "—";
-                return (
-                  <tr key={r.id}>
-                    <td className="cell-strong">{r.acao}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min={0}
-                        value={r.custo}
-                        className="cell-input"
-                        onChange={(e) => updateRoi(r.id, "custo", Number(e.target.value) || 0)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={0}
-                        value={r.custoReal}
-                        className="cell-input"
-                        onChange={(e) => updateRoi(r.id, "custoReal", Number(e.target.value) || 0)}
-                      />
-                    </td>
-                    <td className="cell-num">{r.leads}</td>
-                    <td className="cell-num">{r.visitas}</td>
-                    <td className="cell-num cell-strong">{r.vendas}</td>
-                    <td className="cell-num">R$ {fmt(r.vgv)}</td>
-                    <td className="cell-num">
-                      <span className="status-pill" data-state={r.vgv > 0 ? "ok" : "muted"}>
-                        <TrendingUp size={12} strokeWidth={2} /> {roiValue}
-                      </span>
-                    </td>
-                    <td>
-                      {r.validated ? (
-                        <span className="status-pill" data-state="ok">
-                          <ShieldCheck size={12} strokeWidth={2} /> Salvo
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn--success btn--xs"
-                          onClick={() => validateRoi(r.id)}
-                        >
-                          <Check size={12} strokeWidth={2.25} /> Validar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {roi.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={9} className="data-table-empty">
+                    Nenhuma ação ativa no catálogo.
+                  </td>
+                </tr>
+              ) : (
+                roi.map((r) => (
+                  <RoiRow key={r.action.id} row={r} onEdit={editRoi} onValidate={validateRoi} />
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </section>
+
+      {toast && (
+        <Toast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} />
+      )}
     </>
   );
 }
+
+type LeadRowProps = {
+  lead: OutboundLead;
+  actions: FieldAction[];
+  onStatusChange: (id: string, status: OutboundStatus) => void;
+  onValidate: (id: string) => void;
+  onRemove: (id: string) => void;
+};
+
+function LeadRow({ lead, actions, onStatusChange, onValidate, onRemove }: LeadRowProps) {
+  const acao = actions.find((a) => a.id === lead.action_id)?.nome ?? "—";
+  return (
+    <tr>
+      <td className="cell-strong">{lead.name}</td>
+      <td className="cell-mute">{lead.phone || "—"}</td>
+      <td>
+        <span className="chip-soft" data-accent="amber">
+          {acao}
+        </span>
+      </td>
+      <td>
+        <select
+          className="status-select"
+          value={lead.status}
+          onChange={(e) => onStatusChange(lead.id, e.target.value as OutboundStatus)}
+        >
+          {OUTBOUND_STATUS_LIST.map((s) => (
+            <option key={s} value={s}>
+              {OUTBOUND_STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="cell-mute">{toBrDate(lead.occurred_on)}</td>
+      <td>
+        {lead.validated ? (
+          <span className="status-pill" data-state="ok">
+            <ShieldCheck size={12} strokeWidth={2} /> Salvo
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--success btn--xs"
+            onClick={() => onValidate(lead.id)}
+          >
+            <Check size={12} strokeWidth={2.25} /> Validar
+          </button>
+        )}
+      </td>
+      <td className="cell-actions">
+        <button
+          type="button"
+          className="icon-action icon-action--danger"
+          onClick={() => onRemove(lead.id)}
+          aria-label={`Remover ${lead.name}`}
+        >
+          <Trash2 size={14} strokeWidth={1.75} />
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+type RoiRowProps = {
+  row: OutboundRoiRow;
+  onEdit: (actionId: string, field: "cost_planned" | "cost_real" | "vgv", value: number) => void;
+  onValidate: (actionId: string) => void;
+};
+
+function RoiRow({ row: r, onEdit, onValidate }: RoiRowProps) {
+  const cost = r.cost_real > 0 ? r.cost_real : r.cost_planned;
+  const roiValue = cost > 0 && r.vgv > 0 ? `${(((r.vgv - cost) / cost) * 100).toFixed(0)}%` : "—";
+  return (
+    <tr>
+      <td className="cell-strong">{r.action.nome}</td>
+      <td>
+        <input
+          type="number"
+          min={0}
+          value={r.cost_planned}
+          className="cell-input"
+          onChange={(e) => onEdit(r.action.id, "cost_planned", Number(e.target.value) || 0)}
+        />
+      </td>
+      <td>
+        <input
+          type="number"
+          min={0}
+          value={r.cost_real}
+          className="cell-input"
+          onChange={(e) => onEdit(r.action.id, "cost_real", Number(e.target.value) || 0)}
+        />
+      </td>
+      <td className="cell-num">{r.leads}</td>
+      <td className="cell-num">{r.visitas}</td>
+      <td className="cell-num cell-strong">{r.vendas}</td>
+      <td>
+        <input
+          type="number"
+          min={0}
+          value={r.vgv}
+          className="cell-input"
+          onChange={(e) => onEdit(r.action.id, "vgv", Number(e.target.value) || 0)}
+        />
+      </td>
+      <td className="cell-num">
+        <span className="status-pill" data-state={r.vgv > 0 ? "ok" : "muted"}>
+          <TrendingUp size={12} strokeWidth={2} /> {roiValue}
+        </span>
+      </td>
+      <td>
+        {r.validated ? (
+          <span className="status-pill" data-state="ok">
+            <ShieldCheck size={12} strokeWidth={2} /> Salvo
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--success btn--xs"
+            onClick={() => onValidate(r.action.id)}
+          >
+            <Check size={12} strokeWidth={2.25} /> Validar
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// keep VGV cell formatter available for future readonly view
+void fmt;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Check,
@@ -16,21 +16,32 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-type ImobStatus = "prospect" | "visita" | "acordo" | "ativa";
+import {
+  STATUS_API_TO_UI,
+  STATUS_UI_TO_API,
+  createAgency,
+  deleteAgency,
+  listAgencies,
+  patchAgency,
+  validateAllAgencies,
+  type ImobStatusUI,
+  type RealEstateAgency,
+} from "@/lib/imob/api";
+import { Toast, type ToastKind } from "./toast";
 
 type Imobiliaria = {
   id: string;
   nome: string;
   resp: string;
   tel: string;
-  status: ImobStatus;
+  status: ImobStatusUI;
   corretores: number;
   validated: boolean;
 };
 
-const STATUS_LIST: ImobStatus[] = ["prospect", "visita", "acordo", "ativa"];
+const STATUS_LIST: ImobStatusUI[] = ["prospect", "visita", "acordo", "ativa"];
 
-const STATUS_LABEL: Record<ImobStatus, string> = {
+const STATUS_LABEL: Record<ImobStatusUI, string> = {
   prospect: "Prospect",
   visita: "Visita",
   acordo: "Acordo",
@@ -38,7 +49,7 @@ const STATUS_LABEL: Record<ImobStatus, string> = {
 };
 
 const FUNIL_STAGES: {
-  id: ImobStatus;
+  id: ImobStatusUI;
   label: string;
   Icon: LucideIcon;
   accent: "sky" | "amber" | "violet" | "emerald";
@@ -49,54 +60,64 @@ const FUNIL_STAGES: {
   { id: "ativa", label: "Ativa", Icon: CheckCircle2, accent: "emerald" },
 ];
 
-const IMOBS_MOCK: Imobiliaria[] = [
-  {
-    id: "1",
-    nome: "VENDEU",
-    resp: "Marcos Silva",
-    tel: "(11) 99999-1111",
-    status: "ativa",
-    corretores: 8,
-    validated: true,
-  },
-  {
-    id: "2",
-    nome: "TOPX",
-    resp: "Ana Paula",
-    tel: "(11) 99999-2222",
-    status: "ativa",
-    corretores: 5,
-    validated: true,
-  },
-  {
-    id: "3",
-    nome: "GRÉCIA",
-    resp: "Roberto Costa",
-    tel: "(11) 99999-3333",
-    status: "acordo",
-    corretores: 3,
-    validated: false,
-  },
-  {
-    id: "4",
-    nome: "TEAM HOUSE",
-    resp: "Julia Santos",
-    tel: "(11) 99999-4444",
-    status: "visita",
-    corretores: 0,
-    validated: false,
-  },
-];
+function fromApi(a: RealEstateAgency): Imobiliaria {
+  return {
+    id: a.id,
+    nome: a.name,
+    resp: a.responsible,
+    tel: a.phone,
+    status: STATUS_API_TO_UI[a.status],
+    corretores: a.broker_count,
+    validated: a.validated,
+  };
+}
+
+function extractError(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "error" in err) {
+    const m = (err as { error?: unknown }).error;
+    if (typeof m === "string") return m;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
 
 export function ImobTab() {
-  const [imobs, setImobs] = useState<Imobiliaria[]>(IMOBS_MOCK);
+  const [imobs, setImobs] = useState<Imobiliaria[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ kind: ToastKind; message: string } | null>(null);
 
   const [novoNome, setNovoNome] = useState("");
   const [novoResp, setNovoResp] = useState("");
   const [novoTel, setNovoTel] = useState("");
 
+  // Debounce timers per agency for the corretores number input — avoids one
+  // PATCH per keystroke while still feeling instant in the UI.
+  const corretoresTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  useEffect(() => {
+    let cancelled = false;
+    const timers = corretoresTimers.current;
+    listAgencies()
+      .then((rows) => {
+        if (cancelled) return;
+        setImobs(rows.map(fromApi));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setToast({ kind: "error", message: extractError(err, "Falha ao carregar imobiliárias") });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
+
   const counts = useMemo(() => {
-    const acc: Record<ImobStatus, number> = {
+    const acc: Record<ImobStatusUI, number> = {
       prospect: 0,
       visita: 0,
       acordo: 0,
@@ -110,50 +131,96 @@ export function ImobTab() {
 
   const totalCorretores = useMemo(() => imobs.reduce((sum, i) => sum + i.corretores, 0), [imobs]);
 
-  const addImob = () => {
-    if (!novoNome.trim()) {
+  const addImob = async () => {
+    const name = novoNome.trim().toUpperCase();
+    if (!name) {
       window.alert("Preencha o nome da imobiliária.");
       return;
     }
-    setImobs((prev) => [
-      ...prev,
-      {
-        id: `i-${Date.now()}`,
-        nome: novoNome.trim().toUpperCase(),
-        resp: novoResp.trim(),
-        tel: novoTel.trim(),
-        status: "prospect",
-        corretores: 0,
-        validated: false,
-      },
-    ]);
-    setNovoNome("");
-    setNovoResp("");
-    setNovoTel("");
+    try {
+      const created = await createAgency({
+        name,
+        responsible: novoResp.trim(),
+        phone: novoTel.trim(),
+      });
+      setImobs((prev) => [...prev, fromApi(created)]);
+      setNovoNome("");
+      setNovoResp("");
+      setNovoTel("");
+    } catch (err: unknown) {
+      setToast({ kind: "error", message: extractError(err, "Falha ao cadastrar imobiliária") });
+    }
   };
 
-  const setStatus = (id: string, status: ImobStatus) => {
-    setImobs((prev) => prev.map((i) => (i.id === id ? { ...i, status, validated: false } : i)));
+  const setStatus = async (id: string, status: ImobStatusUI) => {
+    const prev = imobs;
+    setImobs((p) => p.map((i) => (i.id === id ? { ...i, status, validated: false } : i)));
+    try {
+      const updated = await patchAgency(id, { status: STATUS_UI_TO_API[status] });
+      setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
+    } catch (err: unknown) {
+      setImobs(prev);
+      setToast({ kind: "error", message: extractError(err, "Falha ao atualizar status") });
+    }
   };
 
   const setCorretores = (id: string, value: number) => {
-    setImobs((prev) =>
-      prev.map((i) =>
-        i.id === id ? { ...i, corretores: Math.max(0, value), validated: false } : i,
-      ),
-    );
+    const next = Math.max(0, value);
+    setImobs((p) => p.map((i) => (i.id === id ? { ...i, corretores: next, validated: false } : i)));
+
+    const timers = corretoresTimers.current;
+    const existing = timers.get(id);
+    if (existing) clearTimeout(existing);
+    const t = setTimeout(() => {
+      timers.delete(id);
+      patchAgency(id, { broker_count: next })
+        .then((updated) => {
+          setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
+        })
+        .catch((err: unknown) => {
+          setToast({
+            kind: "error",
+            message: extractError(err, "Falha ao atualizar corretores"),
+          });
+        });
+    }, 400);
+    timers.set(id, t);
   };
 
-  const validate = (id: string) => {
-    setImobs((prev) => prev.map((i) => (i.id === id ? { ...i, validated: true } : i)));
+  const validate = async (id: string) => {
+    const prev = imobs;
+    setImobs((p) => p.map((i) => (i.id === id ? { ...i, validated: true } : i)));
+    try {
+      const updated = await patchAgency(id, { validated: true });
+      setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
+    } catch (err: unknown) {
+      setImobs(prev);
+      setToast({ kind: "error", message: extractError(err, "Falha ao validar") });
+    }
   };
 
-  const validateAll = () => {
-    setImobs((prev) => prev.map((i) => ({ ...i, validated: true })));
+  const validateAll = async () => {
+    const prev = imobs;
+    setImobs((p) => p.map((i) => ({ ...i, validated: true })));
+    try {
+      await validateAllAgencies();
+      const fresh = await listAgencies();
+      setImobs(fresh.map(fromApi));
+    } catch (err: unknown) {
+      setImobs(prev);
+      setToast({ kind: "error", message: extractError(err, "Falha ao validar todas") });
+    }
   };
 
-  const remove = (id: string) => {
-    setImobs((prev) => prev.filter((i) => i.id !== id));
+  const remove = async (id: string) => {
+    const prev = imobs;
+    setImobs((p) => p.filter((i) => i.id !== id));
+    try {
+      await deleteAgency(id);
+    } catch (err: unknown) {
+      setImobs(prev);
+      setToast({ kind: "error", message: extractError(err, "Falha ao remover imobiliária") });
+    }
   };
 
   return (
@@ -292,7 +359,9 @@ export function ImobTab() {
           </button>
         </header>
 
-        {imobs.length === 0 ? (
+        {loading ? (
+          <div className="data-empty">Carregando imobiliárias…</div>
+        ) : imobs.length === 0 ? (
           <div className="data-empty">Nenhuma imobiliária cadastrada ainda.</div>
         ) : (
           <ul className="imob-list">
@@ -323,7 +392,7 @@ export function ImobTab() {
                 <select
                   className="status-select status-select--lg"
                   value={im.status}
-                  onChange={(e) => setStatus(im.id, e.target.value as ImobStatus)}
+                  onChange={(e) => setStatus(im.id, e.target.value as ImobStatusUI)}
                   data-status={im.status}
                 >
                   {STATUS_LIST.map((s) => (
@@ -360,6 +429,10 @@ export function ImobTab() {
           </ul>
         )}
       </section>
+
+      {toast && (
+        <Toast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} />
+      )}
     </>
   );
 }
