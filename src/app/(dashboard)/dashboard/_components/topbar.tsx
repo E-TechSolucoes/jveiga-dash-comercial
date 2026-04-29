@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Calendar, Crown, Swords, Target } from "lucide-react";
+import { Calendar, Crown, Swords, Target } from "lucide-react";
 import { useState } from "react";
 
 import { isoWeekNumber } from "@/lib/arsenal/api";
@@ -24,7 +24,6 @@ type Props = {
   dateRangeLabel: string;
 
   comercialName: string;
-  onComercialNameChange: (v: string) => void;
 
   skinsUnlocked: number;
   skinsTotal: number;
@@ -45,7 +44,6 @@ export function Topbar({
   onCustomToChange,
   dateRangeLabel,
   comercialName,
-  onComercialNameChange,
   skinsUnlocked,
   skinsTotal,
   metaReal,
@@ -65,17 +63,21 @@ export function Topbar({
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <div className="avatar" aria-hidden>
-            JV
+        <div className="topbar-row">
+          <div className="brand">
+            <div className="avatar" aria-hidden>
+              JV
+            </div>
+            <div>
+              <div className="brand-title">Painel do Comercial</div>
+              <div className="brand-sub">JERÔNIMO DA VEIGA · JVENDAS</div>
+            </div>
           </div>
-          <div>
-            <div className="brand-title">Painel do Comercial</div>
-            <div className="brand-sub">Jerônimo da Veiga · JVendas · Q1 2026</div>
-          </div>
+
+          <UserMenu />
         </div>
 
-        <div className="top-actions">
+        <div className="topbar-filters">
           <select
             className="select"
             value={empresa}
@@ -101,41 +103,28 @@ export function Topbar({
             <option value="custom">Personalizado…</option>
           </select>
 
-          {isCustom && (
-            <div className="date-pill" style={{ gap: 6 }}>
+          {isCustom ? (
+            <div className="date-pill date-pill--range">
+              <Calendar size={15} strokeWidth={2} aria-hidden />
               <input
                 type="date"
                 value={customFrom}
                 onChange={(e) => onCustomFromChange(e.target.value)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  font: "inherit",
-                  color: "inherit",
-                  outline: "none",
-                  padding: 0,
-                }}
+                className="date-pill-input"
                 aria-label="De"
               />
-              <span style={{ color: "var(--ink-dim)" }}>→</span>
+              <span className="date-pill-sep" aria-hidden>
+                →
+              </span>
               <input
                 type="date"
                 value={customTo}
                 onChange={(e) => onCustomToChange(e.target.value)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  font: "inherit",
-                  color: "inherit",
-                  outline: "none",
-                  padding: 0,
-                }}
+                className="date-pill-input"
                 aria-label="Até"
               />
             </div>
-          )}
-
-          {!isCustom && (
+          ) : (
             <div className="date-pill">
               <Calendar size={15} strokeWidth={2} aria-hidden />
               <span>{dateRangeLabel}</span>
@@ -146,15 +135,9 @@ export function Topbar({
             className="input"
             placeholder="Nome do Comercial"
             value={comercialName}
-            onChange={(e) => onComercialNameChange(e.target.value)}
+            readOnly
             aria-label="Nome do Comercial"
           />
-
-          <button type="button" className="icon-btn" aria-label="Notificações">
-            <Bell size={18} strokeWidth={1.75} />
-            <span className="dot" aria-hidden />
-          </button>
-          <UserMenu />
         </div>
       </header>
 

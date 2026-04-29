@@ -1,180 +1,417 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   FileText,
   FolderOpen,
-  Search,
-  X,
+  Home,
+  UserRound,
   XCircle,
 } from "lucide-react";
 
 import { fmt } from "./types";
 
-type EtapaId = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-type DocStatus = {
-  rg: boolean;
-  cpf: boolean;
-  renda: boolean;
-  certidao: boolean;
-  fgts: boolean;
-};
-
-type Pasta = {
-  id: string;
-  cliente: string;
-  unidade: string;
-  valor: number;
+type PastasPessoaItem = {
+  pessoa: string;
+  situacao: string;
+  valorTotal: number;
+  idsituacao: number | null;
+  empreendimento: string;
   corretor: string;
-  data: string;
-  status: string;
-  etapa: EtapaId;
-  docs: DocStatus;
+  unidade: string;
+  referenciaData: string | null;
+  idPasta: string | null;
 };
 
-const ETAPA_LABELS = [
-  "Distratada",
-  "Documentação",
-  "Análise de Crédito",
-  "Aprovação",
-  "Aprovado",
-  "Contrato",
-  "Venda Concluída",
-];
-
-const STATUS_OPTIONS: string[] = [
-  "Documentação",
-  "Análise de Crédito",
-  "Aprovado",
-  "Contrato",
-  "Venda Concluída",
-];
-
-const PASTAS_MOCK: Pasta[] = [
-  {
-    id: "p1",
-    cliente: "Pedro Henrique",
-    unidade: "Apt 302 T-A",
-    valor: 420_000,
-    corretor: "Ana Souza",
-    data: "18/03",
-    status: "Análise de Crédito",
-    etapa: 2,
-    docs: { rg: true, cpf: true, renda: true, certidao: false, fgts: false },
-  },
-  {
-    id: "p2",
-    cliente: "Juliana Santos",
-    unidade: "Apt 1205 T-B",
-    valor: 510_000,
-    corretor: "Bia Martins",
-    data: "20/03",
-    status: "Documentação",
-    etapa: 1,
-    docs: { rg: true, cpf: true, renda: false, certidao: false, fgts: false },
-  },
-  {
-    id: "p3",
-    cliente: "Marcos Oliveira",
-    unidade: "Apt 704 T-A",
-    valor: 380_000,
-    corretor: "Bia Martins",
-    data: "19/03",
-    status: "Aprovado",
-    etapa: 4,
-    docs: { rg: true, cpf: true, renda: true, certidao: true, fgts: true },
-  },
-  {
-    id: "p4",
-    cliente: "Luciana Barros",
-    unidade: "Apt 401 T-C",
-    valor: 385_000,
-    corretor: "Bia Martins",
-    data: "12/03",
-    status: "Venda Concluída",
-    etapa: 6,
-    docs: { rg: true, cpf: true, renda: true, certidao: true, fgts: true },
-  },
-];
-
-const DOC_LABEL: Record<keyof DocStatus, string> = {
-  rg: "RG",
-  cpf: "CPF",
-  renda: "Renda",
-  certidao: "Certidão",
-  fgts: "FGTS",
+export type PastasKpis = {
+  total: number;
+  emAndamento: number;
+  concluidas: number;
+  distratadas: number;
 };
 
-function etapaTone(etapa: EtapaId): "ok" | "warn" | "bad" | "muted" {
-  if (etapa === 6) return "ok";
-  if (etapa === 0) return "bad";
+type Props = {
+  semNome: boolean;
+  empresaNome: string;
+  periodBounds: { from: string; to: string } | null;
+  loading: boolean;
+  error: string | null;
+  kpis: PastasKpis | null;
+};
+
+function KpiSkeleton() {
+  return (
+    <div className="kpi-val" aria-hidden>
+      <span
+        className="sk-pulse sk-line sk-line--xl"
+        style={{ display: "block", minWidth: "3ch" }}
+      />
+    </div>
+  );
+}
+
+function fmtBrl(n: number): string {
+  return (n ?? 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Data curta a partir de `referencia_data` (YYYY-MM-DD …). */
+function fmtRefDateShort(s: string | null): string {
+  if (!s) return "—";
+  const part = s.trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(part);
+  if (m) return `${m[3]}/${m[2]}`;
+  return part.length >= 5 ? part.slice(0, 5) : "—";
+}
+
+function situacaoTone(idsituacao: number | null): "ok" | "warn" | "bad" {
+  if (idsituacao === 5) return "ok";
+  if (idsituacao === 3 || idsituacao === 6) return "bad";
   return "warn";
 }
 
-export function PastasTab() {
-  const [pastas] = useState<Pasta[]>(PASTAS_MOCK);
-  const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState("");
+/** Remove o rótulo longo "Análise do Correspondente" do badge (idsituacao 2). */
+function situacaoBadgeLabel(situacao: string | null | undefined): string {
+  const n = (situacao ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (n === "analise do correspondente") return "Em análise";
+  return (situacao ?? "").trim() || "—";
+}
 
-  const filtered = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    return pastas.filter((p) => {
-      const matchQ = !q || `${p.cliente} ${p.unidade} ${p.corretor}`.toLowerCase().includes(q);
-      const matchF = !filtro || p.status === filtro;
-      return matchQ && matchF;
-    });
-  }, [pastas, busca, filtro]);
+function hasField(v: string | null | undefined): boolean {
+  const s = (v ?? "").trim();
+  return Boolean(s && s !== "—");
+}
 
-  const counters = useMemo(() => {
-    const total = pastas.length;
-    const andamento = pastas.filter((p) => p.etapa > 0 && p.etapa < 6).length;
-    const concluidas = pastas.filter((p) => p.etapa === 6).length;
-    const distratadas = pastas.filter((p) => p.etapa === 0).length;
-    return { total, andamento, concluidas, distratadas };
-  }, [pastas]);
+function PastaCardFields({ row }: { row: PastasPessoaItem }) {
+  const blocks: ReactNode[] = [];
+  if (hasField(row.unidade)) {
+    blocks.push(
+      <div key="unidade" className="pasta-field pasta-field--unidade" title={row.unidade}>
+        <span className="pasta-field-ico" aria-hidden>
+          <Home size={15} strokeWidth={2} />
+        </span>
+        <span className="pasta-field-text">
+          <span className="pasta-field-label">Unidade</span>
+          <span className="pasta-field-value">{row.unidade}</span>
+        </span>
+      </div>,
+    );
+  }
+  if (hasField(row.empreendimento)) {
+    blocks.push(
+      <div key="emp" className="pasta-field pasta-field--empreendimento" title={row.empreendimento}>
+        <span className="pasta-field-ico" aria-hidden>
+          <Building2 size={15} strokeWidth={2} />
+        </span>
+        <span className="pasta-field-text">
+          <span className="pasta-field-label">Empreendimento</span>
+          <span className="pasta-field-value">{row.empreendimento}</span>
+        </span>
+      </div>,
+    );
+  }
+  if (hasField(row.corretor)) {
+    blocks.push(
+      <div key="corr" className="pasta-field pasta-field--corretor" title={row.corretor}>
+        <span className="pasta-field-ico" aria-hidden>
+          <UserRound size={15} strokeWidth={2} />
+        </span>
+        <span className="pasta-field-text">
+          <span className="pasta-field-label">Corretor</span>
+          <span className="pasta-field-value">{row.corretor}</span>
+        </span>
+      </div>,
+    );
+  }
+  if (blocks.length === 0) {
+    return (
+      <div className="pasta-fields pasta-fields--empty" aria-label="Dados do empreendimento">
+        —
+      </div>
+    );
+  }
+  return (
+    <div className="pasta-fields" aria-label="Unidade, empreendimento e corretor">
+      {blocks}
+    </div>
+  );
+}
+
+function PastaCard({ row }: { row: PastasPessoaItem }) {
+  const tone = situacaoTone(row.idsituacao);
+
+  return (
+    <article className="pasta-card" data-tone={tone}>
+      <header className="pasta-card-head">
+        <div className="pasta-card-cliente">{row.pessoa?.trim() ? row.pessoa : "—"}</div>
+        <span className="pasta-card-status" data-tone={tone}>
+          {situacaoBadgeLabel(row.situacao)}
+        </span>
+      </header>
+
+      <PastaCardFields row={row} />
+
+      <div className="pasta-card-row">
+        <span className="pasta-card-val">{fmtBrl(row.valorTotal)}</span>
+        <span className="pasta-card-date">{fmtRefDateShort(row.referenciaData)}</span>
+      </div>
+
+      <footer className="pasta-card-foot">
+        <FileText size={13} strokeWidth={1.75} aria-hidden />
+        Pasta CV · #{row.idPasta ?? "—"}
+      </footer>
+    </article>
+  );
+}
+
+function PastaCardSkel() {
+  return (
+    <article className="pasta-card" aria-hidden>
+      <div className="pasta-card-head">
+        <span className="sk-pulse sk-line sk-line--lg sk-grow" />
+        <span className="sk-pulse sk-line" style={{ width: 100, height: 22, borderRadius: 999 }} />
+      </div>
+      <div className="pasta-fields" aria-hidden>
+        <span className="pasta-field pasta-field--empreendimento" style={{ opacity: 0.55 }}>
+          <span className="pasta-field-ico sk-pulse" style={{ borderRadius: 9 }} />
+          <span className="pasta-field-text">
+            <span className="sk-pulse sk-line" style={{ width: 72, height: 9 }} />
+            <span
+              className="sk-pulse sk-line sk-line--lg"
+              style={{ marginTop: 4, maxWidth: 140 }}
+            />
+          </span>
+        </span>
+        <span className="pasta-field pasta-field--corretor" style={{ opacity: 0.55 }}>
+          <span className="pasta-field-ico sk-pulse" style={{ borderRadius: 9 }} />
+          <span className="pasta-field-text">
+            <span className="sk-pulse sk-line" style={{ width: 56, height: 9 }} />
+            <span className="sk-pulse sk-line" style={{ marginTop: 4, width: 96, height: 14 }} />
+          </span>
+        </span>
+      </div>
+      <div className="pasta-card-row">
+        <span className="sk-pulse sk-line sk-line--xl" style={{ width: "45%" }} />
+        <span className="sk-pulse sk-line" style={{ width: 40 }} />
+      </div>
+      <footer className="pasta-card-foot">
+        <span className="sk-pulse sk-line" style={{ width: 120, height: 12 }} />
+      </footer>
+    </article>
+  );
+}
+
+const PASTAS_PAGE_SIZE = 8;
+
+function PastasListSection({
+  empresaNome,
+  periodBounds,
+}: {
+  empresaNome: string;
+  periodBounds: { from: string; to: string };
+}) {
+  const [page, setPage] = useState(1);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [listTotal, setListTotal] = useState(0);
+  const [items, setItems] = useState<PastasPessoaItem[]>([]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(listTotal / PASTAS_PAGE_SIZE)),
+    [listTotal],
+  );
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const signal = ac.signal;
+
+    void (async () => {
+      await Promise.resolve();
+      if (signal.aborted) return;
+      if (!empresaNome.trim() || !periodBounds) return;
+
+      setListLoading(true);
+      setListError(null);
+      try {
+        const params = new URLSearchParams({
+          nome: empresaNome.trim(),
+          from: periodBounds.from,
+          to: periodBounds.to,
+          page: String(page),
+        });
+        const res = await fetch(`/api/dashboard/pastas/list?${params.toString()}`, {
+          signal,
+          cache: "no-store",
+        });
+        if (signal.aborted) return;
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          setItems([]);
+          setListTotal(0);
+          setListError(body?.error ?? "Não foi possível carregar a lista.");
+          return;
+        }
+        const data = (await res.json()) as {
+          total?: number;
+          items?: PastasPessoaItem[];
+        };
+        if (signal.aborted) return;
+        const total = Number(data.total ?? 0);
+        setListTotal(total);
+        setItems(Array.isArray(data.items) ? data.items : []);
+        setListError(null);
+        const tp = Math.max(1, Math.ceil(total / PASTAS_PAGE_SIZE));
+        setPage((prev) => Math.min(prev, tp));
+      } catch (e) {
+        if ((e as Error).name === "AbortError" || signal.aborted) return;
+        setItems([]);
+        setListTotal(0);
+        setListError("Não foi possível carregar a lista.");
+      } finally {
+        if (!signal.aborted) setListLoading(false);
+      }
+    })();
+
+    return () => ac.abort(new DOMException("Superseded pastas list", "AbortError"));
+  }, [page, empresaNome, periodBounds]);
+
+  const fromIdx = listTotal === 0 ? 0 : (page - 1) * PASTAS_PAGE_SIZE + 1;
+  const toIdx = listTotal === 0 ? 0 : Math.min(page * PASTAS_PAGE_SIZE, listTotal);
+
+  return (
+    <section className="pastas-list-section" aria-label="Pastas no período">
+      <div className="pastas-list-head">
+        <h3 className="pastas-list-title">Pessoas no filtro</h3>
+        <p className="pastas-list-meta">
+          {listLoading ? (
+            "Carregando lista…"
+          ) : (
+            <>
+              <strong>{fmt(listTotal)}</strong>{" "}
+              {listTotal === 1 ? "nome encontrado" : "nomes encontrados"}{" "}
+              <span className="pastas-list-meta-sep">·</span> empreendimento e período atuais
+            </>
+          )}
+        </p>
+      </div>
+
+      {listError ? (
+        <div className="info-banner info-banner--warn" style={{ marginTop: 12 }}>
+          <AlertTriangle size={16} strokeWidth={2} />
+          <div>{listError}</div>
+        </div>
+      ) : null}
+
+      {listLoading ? (
+        <div className="pasta-grid">
+          {Array.from({ length: PASTAS_PAGE_SIZE }).map((_, i) => (
+            <PastaCardSkel key={i} />
+          ))}
+        </div>
+      ) : listTotal === 0 ? (
+        <div className="data-empty" style={{ marginTop: 12 }}>
+          Nenhuma pasta no período para este empreendimento.
+        </div>
+      ) : (
+        <>
+          <div className="pasta-grid">
+            {items.map((row, idx) => (
+              <PastaCard
+                key={row.idPasta ?? `${row.pessoa}-${row.referenciaData}-${idx}`}
+                row={row}
+              />
+            ))}
+          </div>
+
+          <div className="admin-pager" style={{ marginTop: 4, borderRadius: "var(--radius-md)" }}>
+            <div className="admin-pager-info">
+              {listTotal > 0 ? (
+                <>
+                  Exibindo <strong>{fromIdx}</strong>–<strong>{toIdx}</strong> de{" "}
+                  <strong>{fmt(listTotal)}</strong>
+                </>
+              ) : (
+                "—"
+              )}
+            </div>
+            <div className="admin-pager-actions">
+              <button
+                type="button"
+                className="admin-icon-btn"
+                aria-label="Página anterior"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={18} strokeWidth={2} />
+              </button>
+              <span className="admin-pager-page">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="admin-icon-btn"
+                aria-label="Próxima página"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <ChevronRight size={18} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function PastasTab({ semNome, empresaNome, periodBounds, loading, error, kpis }: Props) {
+  const showDash = semNome;
+  const showSkeleton = !semNome && !error && (loading || kpis === null);
 
   return (
     <>
-      <div className="info-banner info-banner--warn">
-        <AlertTriangle size={16} strokeWidth={2} />
-        <div>
-          <strong>Integração:</strong> status de RG / CPF / Renda / Certidão / FGTS é mockado.
-          Aguardando endpoint REST do CV CRM. Pasta e status geral já vêm da Base JV.
+      {semNome ? (
+        <div className="info-banner info-banner--warn">
+          <AlertTriangle size={16} strokeWidth={2} />
+          <div>
+            <strong>Empreendimento:</strong> selecione um empreendimento no filtro superior para
+            carregar os totais de pastas (BigQuery <code className="text-xs">dwh.Pastas</code>,
+            campo <code className="text-xs">empreendimento</code>).
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="info-banner" style={{ borderColor: "var(--line)", background: "#fafafa" }}>
+          <FolderOpen size={16} strokeWidth={2} />
+          <div>
+            Totais filtrados por <code className="text-xs">empreendimento</code> (nome) e{" "}
+            <code className="text-xs">referencia_data</code> no período; agrupamento por{" "}
+            <code className="text-xs">idsituacao</code> (Aprovado → Concluídas; Cancelada /
+            Reprovado → Distratadas; demais → Em andamento).
+          </div>
+        </div>
+      )}
 
-      <div className="filter-bar">
-        <label className="search-field">
-          <Search size={15} strokeWidth={1.75} />
-          <input
-            type="search"
-            placeholder="Buscar cliente, unidade ou corretor"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-          {busca && (
-            <button type="button" className="search-clear" onClick={() => setBusca("")}>
-              <X size={13} strokeWidth={2} />
-            </button>
-          )}
-        </label>
-        <select
-          className="field-input filter-select"
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-        >
-          <option value="">Todos os status</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
+      {error && !semNome ? (
+        <div className="info-banner info-banner--warn">
+          <AlertTriangle size={16} strokeWidth={2} />
+          <div>{error}</div>
+        </div>
+      ) : null}
 
       <div className="kpi-row">
         <article className="kpi" data-accent="blue">
@@ -184,7 +421,13 @@ export function PastasTab() {
             </div>
             <span className="status-dot" aria-hidden />
           </div>
-          <div className="kpi-val">{counters.total}</div>
+          {showDash ? (
+            <div className="kpi-val">—</div>
+          ) : showSkeleton ? (
+            <KpiSkeleton />
+          ) : (
+            <div className="kpi-val">{kpis?.total ?? "—"}</div>
+          )}
           <div className="kpi-label">Total</div>
           <div className="kpi-sub">Pastas no período</div>
         </article>
@@ -195,9 +438,17 @@ export function PastasTab() {
             </div>
             <span className="status-dot" aria-hidden />
           </div>
-          <div className="kpi-val">{counters.andamento}</div>
+          {showDash ? (
+            <div className="kpi-val">—</div>
+          ) : showSkeleton ? (
+            <KpiSkeleton />
+          ) : (
+            <div className="kpi-val">{kpis?.emAndamento ?? "—"}</div>
+          )}
           <div className="kpi-label">Em andamento</div>
-          <div className="kpi-sub">Análise / Doc / Contrato</div>
+          <div className="kpi-sub">
+            Demais situações + exceção / agência / formulários / pendência
+          </div>
         </article>
         <article className="kpi" data-accent="emerald">
           <div className="kpi-head">
@@ -206,9 +457,15 @@ export function PastasTab() {
             </div>
             <span className="status-dot" aria-hidden />
           </div>
-          <div className="kpi-val">{counters.concluidas}</div>
+          {showDash ? (
+            <div className="kpi-val">—</div>
+          ) : showSkeleton ? (
+            <KpiSkeleton />
+          ) : (
+            <div className="kpi-val">{kpis?.concluidas ?? "—"}</div>
+          )}
           <div className="kpi-label">Concluídas</div>
-          <div className="kpi-sub">Venda assinada</div>
+          <div className="kpi-sub">Aprovado (idsituacao 5)</div>
         </article>
         <article className="kpi" data-accent="rose">
           <div className="kpi-head">
@@ -217,85 +474,25 @@ export function PastasTab() {
             </div>
             <span className="status-dot" aria-hidden />
           </div>
-          <div className="kpi-val">{counters.distratadas}</div>
+          {showDash ? (
+            <div className="kpi-val">—</div>
+          ) : showSkeleton ? (
+            <KpiSkeleton />
+          ) : (
+            <div className="kpi-val">{kpis?.distratadas ?? "—"}</div>
+          )}
           <div className="kpi-label">Distratadas</div>
-          <div className="kpi-sub">Cancelamentos</div>
+          <div className="kpi-sub">Cancelada ou Reprovado</div>
         </article>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="data-empty">Nenhuma pasta encontrada com os filtros atuais.</div>
-      ) : (
-        <div className="pasta-grid">
-          {filtered.map((p) => {
-            const tone = etapaTone(p.etapa);
-            const docCount = Object.values(p.docs).filter(Boolean).length;
-            const docTotal = Object.keys(p.docs).length;
-            return (
-              <article key={p.id} className="pasta-card" data-tone={tone}>
-                <header className="pasta-card-head">
-                  <div className="pasta-card-cliente">{p.cliente}</div>
-                  <span className="pasta-card-status" data-tone={tone}>
-                    {p.status}
-                  </span>
-                </header>
-                <div className="pasta-card-meta">
-                  <span>{p.unidade}</span>
-                  <span className="dot-sep" aria-hidden>
-                    ·
-                  </span>
-                  <span>{p.corretor}</span>
-                </div>
-                <div className="pasta-card-row">
-                  <span className="pasta-card-val">R$ {fmt(p.valor)}</span>
-                  <span className="pasta-card-date">{p.data}</span>
-                </div>
-
-                <div className="pasta-progress" aria-label={`Etapa ${p.etapa} de 6`}>
-                  {Array.from({ length: 6 }).map((_, idx) => {
-                    const state = idx < p.etapa ? "done" : idx === p.etapa ? "current" : "todo";
-                    return (
-                      <span
-                        key={idx}
-                        className="pasta-progress-dot"
-                        data-state={state}
-                        aria-hidden
-                      />
-                    );
-                  })}
-                </div>
-                <div className="pasta-progress-meta">
-                  <span>{ETAPA_LABELS[p.etapa]}</span>
-                  <span>
-                    {docCount} / {docTotal} docs
-                  </span>
-                </div>
-
-                <ul className="pasta-docs">
-                  {(Object.keys(p.docs) as Array<keyof DocStatus>).map((key) => {
-                    const ok = p.docs[key];
-                    return (
-                      <li key={key} className="pasta-doc" data-ok={ok}>
-                        {ok ? (
-                          <CheckCircle2 size={12} strokeWidth={2} />
-                        ) : (
-                          <XCircle size={12} strokeWidth={2} />
-                        )}
-                        <span>{DOC_LABEL[key]}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                <footer className="pasta-card-foot">
-                  <FileText size={13} strokeWidth={1.75} />
-                  Pasta CV · #{p.id.toUpperCase()}
-                </footer>
-              </article>
-            );
-          })}
-        </div>
-      )}
+      {!semNome && periodBounds && !error ? (
+        <PastasListSection
+          key={`${empresaNome}|${periodBounds.from}|${periodBounds.to}`}
+          empresaNome={empresaNome}
+          periodBounds={periodBounds}
+        />
+      ) : null}
     </>
   );
 }

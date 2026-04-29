@@ -1,14 +1,15 @@
 import { ScrollText } from "lucide-react";
 
 const REGRAS = [
-  "Lead não atendido = lead perdido. 15 minutos ⏰",
-  "CRM é lei. Fora do CV não existe 📱",
+  "Lead não atendido = lead perdido. 3 minutos ⏰",
+  "Ferramente é lei. Fora delas não existe 📱",
   "A roleta é sagrada 🎰",
   "Ação sem relatório = dinheiro fora 💸",
   "Estande sujo = venda perdida 🧹",
   "Motive, treine, cobre, reconheça 💪",
   "Números não mentem 📊",
   "Segunda: resetar e atacar 🚀",
+  "Vocês sao donos do empreendimento. Fiquem em cima",
 ];
 
 export function RegrasOuroCard() {

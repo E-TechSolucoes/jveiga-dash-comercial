@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "@/lib/auth";
+
 import empreendimentosData from "../../../../../empreendimentos.json";
 import { ArsenalTab } from "./arsenal-tab";
 import { CascadeCard } from "./cascade-card";
@@ -10,7 +12,8 @@ import { ConhecimentoTab } from "./conhecimento-tab";
 import { FunnelSection } from "./funnel-section";
 import { ImobTab } from "./imob-tab";
 import { OutboundTab } from "./outbound-tab";
-import { PastasTab } from "./pastas-tab";
+import { PastasTab, type PastasKpis } from "./pastas-tab";
+import { RankingSkinsSection } from "./ranking-skins-section";
 import { RecepTab } from "./recep-tab";
 import { RegrasOuroCard } from "./regras-ouro-card";
 import { TabsNav } from "./tabs-nav";
@@ -125,6 +128,7 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
 }
 
 export function DashboardShell() {
+  const { session } = useAuth();
   const persistedFilters = useMemo(() => {
     if (typeof window === "undefined") {
       return {
@@ -166,7 +170,7 @@ export function DashboardShell() {
   const [periodo, setPeriodo] = useState<PeriodoId>(persistedFilters.periodo);
   const [customFrom, setCustomFrom] = useState(persistedFilters.customFrom);
   const [customTo, setCustomTo] = useState(persistedFilters.customTo);
-  const [comercialName, setComercialName] = useState("");
+  const comercialName = session?.user?.name?.trim() ?? "";
 
   useEffect(() => {
     try {
@@ -197,6 +201,9 @@ export function DashboardShell() {
     vendasAcumuladoHistorico: 0,
   });
   const [funnelLoading, setFunnelLoading] = useState(true);
+  const [pastasKpis, setPastasKpis] = useState<PastasKpis | null>(null);
+  const [pastasLoading, setPastasLoading] = useState(false);
+  const [pastasError, setPastasError] = useState<string | null>(null);
   const [leadsHistoricoMensalMeta, setLeadsHistoricoMensalMeta] = useState(0);
   const [performance, setPerformance] = useState<PerformanceNumbers>({
     corretores: 24,
@@ -276,8 +283,6 @@ export function DashboardShell() {
           visitas: Number(data.visitas ?? 0),
           vendas: Number(data.vendas ?? 0),
           vendasAcumuladoHistorico: Number(data.vendasAcumuladoHistorico ?? 0),
-          // `pastas` permanece sem integração por enquanto.
-          pastas: prev.pastas,
         }));
         setPerformance((prev) => ({
           ...prev,
@@ -292,6 +297,65 @@ export function DashboardShell() {
     })();
     return () => ac.abort(new DOMException("Superseded by newer funnel request", "AbortError"));
   }, [empresa, empresaNomeSelecionado, periodBounds]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+
+    void (async () => {
+      if (ac.signal.aborted) return;
+      if (!empresaNomeSelecionado.trim() || !periodBounds) {
+        setPastasKpis(null);
+        setPastasError(null);
+        setPastasLoading(false);
+        setReal((prev) => ({ ...prev, pastas: 0 }));
+        return;
+      }
+
+      setPastasLoading(true);
+      setPastasError(null);
+      setPastasKpis(null);
+
+      try {
+        const params = new URLSearchParams({
+          nome: empresaNomeSelecionado,
+          from: periodBounds.from,
+          to: periodBounds.to,
+        });
+        const res = await fetch(`/api/dashboard/pastas?${params.toString()}`, {
+          signal: ac.signal,
+          cache: "no-store",
+        });
+        if (ac.signal.aborted) return;
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          setPastasKpis(null);
+          setPastasError(body?.error ?? "Não foi possível carregar os totais de pastas.");
+          setReal((prev) => ({ ...prev, pastas: 0 }));
+          return;
+        }
+        const data = (await res.json()) as Partial<PastasKpis>;
+        if (ac.signal.aborted) return;
+        const kpis: PastasKpis = {
+          total: Number(data.total ?? 0),
+          emAndamento: Number(data.emAndamento ?? 0),
+          concluidas: Number(data.concluidas ?? 0),
+          distratadas: Number(data.distratadas ?? 0),
+        };
+        setPastasKpis(kpis);
+        setPastasError(null);
+        setReal((prev) => ({ ...prev, pastas: kpis.total }));
+      } catch {
+        if (ac.signal.aborted) return;
+        setPastasKpis(null);
+        setPastasError("Não foi possível carregar os totais de pastas.");
+        setReal((prev) => ({ ...prev, pastas: 0 }));
+      } finally {
+        if (!ac.signal.aborted) setPastasLoading(false);
+      }
+    })();
+
+    return () => ac.abort(new DOMException("Superseded by newer pastas request", "AbortError"));
+  }, [empresaNomeSelecionado, periodBounds]);
 
   useEffect(() => {
     if (!empresaNomeSelecionado) return;
@@ -336,7 +400,6 @@ export function DashboardShell() {
             onCustomToChange={setCustomTo}
             dateRangeLabel={dateRangeLabel}
             comercialName={comercialName}
-            onComercialNameChange={setComercialName}
             skinsUnlocked={skinsUnlocked}
             skinsTotal={skinsTotal}
             metaReal={real.vendas}
@@ -368,6 +431,7 @@ export function DashboardShell() {
             performance={performance}
             loading={funnelLoading}
           />
+          <RankingSkinsSection semana={semana} />
           <RegrasOuroCard />
         </div>
 
@@ -380,7 +444,14 @@ export function DashboardShell() {
         </div>
 
         <div className="tc" data-active={activeTab === "pastas"}>
-          <PastasTab />
+          <PastasTab
+            semNome={!empresaNomeSelecionado.trim()}
+            empresaNome={empresaNomeSelecionado}
+            periodBounds={periodBounds}
+            loading={pastasLoading}
+            error={pastasError}
+            kpis={pastasKpis}
+          />
         </div>
 
         <div className="tc" data-active={activeTab === "arsenal"}>
