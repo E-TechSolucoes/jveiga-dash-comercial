@@ -46,6 +46,7 @@ const TOAST_DURATION_MS = 3000;
 type Props = {
   semana: number;
   onSemanaChange: (next: number) => void;
+  empreendimentoId: number | null;
 };
 
 function errorMessage(err: unknown): string {
@@ -69,7 +70,7 @@ function endOfWeek(weekStartISO: string): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-export function OutboundTab({ semana, onSemanaChange }: Props) {
+export function OutboundTab({ semana, onSemanaChange, empreendimentoId }: Props) {
   // Defer weekStart computation to client mount: depends on Date in BR tz,
   // so SSR vs first client render would diverge.
   const [mounted, setMounted] = useState(false);
@@ -110,12 +111,12 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
 
   const loadWeek = useCallback(
     async (signal?: AbortSignal) => {
-      if (!weekStart) return;
+      if (!weekStart || !empreendimentoId) return;
       const id = ++reqIdRef.current;
       setLoading(true);
       setError(null);
       try {
-        const data = await getOutboundWeek(weekStart);
+        const data = await getOutboundWeek(weekStart, empreendimentoId);
         if (signal?.aborted || id !== reqIdRef.current) return;
         setWeek(data);
       } catch (e: unknown) {
@@ -126,7 +127,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
         if (!signal?.aborted && id === reqIdRef.current) setLoading(false);
       }
     },
-    [weekStart],
+    [weekStart, empreendimentoId],
   );
 
   // Action selects only show actions that had at least one validated
@@ -155,6 +156,10 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
 
   const addLead = async () => {
     if (!weekStart) return;
+    if (!empreendimentoId) {
+      showToast("error", "Selecione um empreendimento no topo.");
+      return;
+    }
     if (!novoNome.trim()) {
       showToast("error", "Preencha o nome do lead.");
       return;
@@ -166,6 +171,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
     setCreating(true);
     try {
       await createLead({
+        empreendimento_id: empreendimentoId,
         week_start: weekStart,
         action_id: novoAcao,
         name: novoNome.trim(),
@@ -185,6 +191,10 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
 
   const handleFileChosen = async (file: File | null) => {
     if (!file || !weekStart) return;
+    if (!empreendimentoId) {
+      showToast("error", "Selecione um empreendimento no topo.");
+      return;
+    }
     if (!importAcao) {
       showToast("error", "Selecione a ação antes de enviar a planilha.");
       return;
@@ -195,6 +205,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
         file,
         action_id: importAcao,
         week_start: weekStart,
+        empreendimento_id: empreendimentoId,
       });
       await loadWeek();
       const skippedNote = res.skipped > 0 ? ` (${res.skipped} ignorados sem nome)` : "";
@@ -236,9 +247,9 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
   };
 
   const validateAll = async () => {
-    if (!weekStart) return;
+    if (!weekStart || !empreendimentoId) return;
     try {
-      await validateAllLeads(weekStart);
+      await validateAllLeads(weekStart, empreendimentoId);
       await loadWeek();
       showToast("success", "Todos os leads validados.");
     } catch (e: unknown) {
@@ -285,7 +296,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
         : w,
     );
 
-    if (!weekStart) return;
+    if (!weekStart || !empreendimentoId) return;
     const timers = costTimers.current;
     const existing = timers.get(actionId);
     if (existing) clearTimeout(existing);
@@ -299,6 +310,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
         [field]: next,
       } as { cost_planned: number; cost_real: number; vgv: number };
       upsertCost({
+        empreendimento_id: empreendimentoId,
         week_start: weekStart,
         action_id: actionId,
         ...draft,
@@ -330,7 +342,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
   };
 
   const validateRoi = async (actionId: string) => {
-    if (!weekStart) return;
+    if (!weekStart || !empreendimentoId) return;
     const row = roi.find((r) => r.action.id === actionId);
     if (!row) return;
     try {
@@ -338,6 +350,7 @@ export function OutboundTab({ semana, onSemanaChange }: Props) {
       const cost = row.cost_id
         ? await validateCost(row.cost_id)
         : await upsertCost({
+            empreendimento_id: empreendimentoId,
             week_start: weekStart,
             action_id: actionId,
             cost_planned: row.cost_planned,

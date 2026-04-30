@@ -64,11 +64,19 @@ export type OutboundCost = {
 
 const BASE = "/api/v1/outbound";
 
-export function getOutboundWeek(weekStart: string): Promise<OutboundWeek> {
-  return apiFetch<OutboundWeek>(`${BASE}/week?week_start=${encodeURIComponent(weekStart)}`);
+export function getOutboundWeek(
+  weekStart: string,
+  empreendimentoId: number,
+): Promise<OutboundWeek> {
+  const qs = new URLSearchParams({
+    week_start: weekStart,
+    empreendimento_id: String(empreendimentoId),
+  }).toString();
+  return apiFetch<OutboundWeek>(`${BASE}/week?${qs}`);
 }
 
 export type CreateLeadPayload = {
+  empreendimento_id: number;
   week_start: string;
   action_id: string;
   name: string;
@@ -100,11 +108,15 @@ export function deleteLead(id: string): Promise<void> {
   return apiFetch<void>(`${BASE}/leads/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function validateAllLeads(weekStart: string): Promise<{ updated: number }> {
-  return apiFetch<{ updated: number }>(
-    `${BASE}/leads/validate-all?week_start=${encodeURIComponent(weekStart)}`,
-    { method: "POST" },
-  );
+export function validateAllLeads(
+  weekStart: string,
+  empreendimentoId: number,
+): Promise<{ updated: number }> {
+  const qs = new URLSearchParams({
+    week_start: weekStart,
+    empreendimento_id: String(empreendimentoId),
+  }).toString();
+  return apiFetch<{ updated: number }>(`${BASE}/leads/validate-all?${qs}`, { method: "POST" });
 }
 
 export type ImportLeadsResponse = {
@@ -117,11 +129,13 @@ export function importLeadsSpreadsheet(args: {
   file: File;
   action_id: string;
   week_start: string;
+  empreendimento_id: number;
 }): Promise<ImportLeadsResponse> {
   const fd = new FormData();
   fd.append("file", args.file);
   fd.append("action_id", args.action_id);
   fd.append("week_start", args.week_start);
+  fd.append("empreendimento_id", String(args.empreendimento_id));
   return apiFetch<ImportLeadsResponse>(`${BASE}/leads/import`, {
     method: "POST",
     body: fd,
@@ -129,6 +143,7 @@ export function importLeadsSpreadsheet(args: {
 }
 
 export type UpsertCostPayload = {
+  empreendimento_id: number;
   week_start: string;
   action_id: string;
   cost_planned: number;
