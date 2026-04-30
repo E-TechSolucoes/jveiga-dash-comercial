@@ -173,9 +173,13 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
   useEffect(() => {
     if (sub !== "diario") return;
+    if (empreendimentoId == null) return;
 
+    queueMicrotask(() => {
+      setDiarioLoading(true);
+    });
     const ctrl = new AbortController();
-    fetchDailyCheckItemsToday(ctrl.signal)
+    fetchDailyCheckItemsToday(empreendimentoId, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
@@ -204,7 +208,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub]);
+  }, [sub, empreendimentoId]);
 
   useEffect(() => {
     if (sub !== "premiacao") return;
@@ -322,6 +326,12 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
   const validateDiario = async () => {
     if (diarioSaving) return;
+    if (empreendimentoId == null) {
+      const msg = "Selecione um empreendimento válido para salvar a rotina diária.";
+      setDiarioSaveError(msg);
+      showToast("error", msg);
+      return;
+    }
 
     const itemsBody: ReplaceDailyCheckActivityBody["items"] = [];
     for (const item of diarioItems) {
@@ -338,6 +348,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
     try {
       const updated = await replaceDailyCheckActivity({
+        empreendimento_id: empreendimentoId,
         items: itemsBody,
       });
 
@@ -533,7 +544,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
           onClick={validate}
           disabled={
             (sub === "base" && (baseSaving || empreendimentoId == null)) ||
-            (sub === "diario" && diarioSaving) ||
+            (sub === "diario" && (diarioSaving || empreendimentoId == null)) ||
             (sub === "premiacao" && premSaving)
           }
           aria-busy={
@@ -749,6 +760,10 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
           </div>
         ) : sub === "base" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
+        ) : sub === "diario" && empreendimentoId == null ? (
+          <div className="ck-empty">
+            Selecione um empreendimento no topo para carregar e salvar a rotina diária.
+          </div>
         ) : sub === "diario" && diarioLoading ? (
           <div className="ck-list ck-list--single" aria-busy="true" aria-live="polite">
             {Array.from({ length: 4 }).map((_, i) => (
