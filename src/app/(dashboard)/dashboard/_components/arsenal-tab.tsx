@@ -351,11 +351,11 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoId }: Props) 
     draft: { local: string; participantIds: string[] },
     executionId: string | null,
   ): Promise<boolean> => {
-    if (!weekStart) return false;
+    if (!weekStart || !empreendimentoId) return false;
     const slot = executionSlotKey(actionId, weekday);
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
-      const row = await upsertExecution(actionId, weekStart, weekday, {
+      const row = await upsertExecution(actionId, weekStart, weekday, empreendimentoId, {
         local: draft.local.trim() || null,
         participant_brokers: draft.participantIds,
       });
