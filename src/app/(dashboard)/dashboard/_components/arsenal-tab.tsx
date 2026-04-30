@@ -126,9 +126,10 @@ function errorMessage(err: unknown): string {
 type Props = {
   semana: number;
   onSemanaChange: (next: number) => void;
+  empreendimentoId: number | null;
 };
 
-export function ArsenalTab({ semana, onSemanaChange }: Props) {
+export function ArsenalTab({ semana, onSemanaChange, empreendimentoId }: Props) {
   const [filter, setFilter] = useState<Filter>("acao");
 
   const [week, setWeek] = useState<ArsenalWeek | null>(null);
@@ -189,12 +190,12 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
 
   const loadWeek = useCallback(
     async (signal?: AbortSignal) => {
-      if (!weekStart) return;
+      if (!weekStart || !empreendimentoId) return;
       const id = ++reqIdRef.current;
       setLoading(true);
       setError(null);
       try {
-        const data = await getArsenalWeek(weekStart);
+        const data = await getArsenalWeek(weekStart, empreendimentoId);
         if (signal?.aborted || id !== reqIdRef.current) return;
         setWeek(data);
         setStatDrafts({});
@@ -208,7 +209,7 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
         }
       }
     },
-    [weekStart],
+    [weekStart, empreendimentoId],
   );
 
   useEffect(() => {
@@ -239,9 +240,19 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
       showToast("error", "Informe o nome do corretor.");
       return;
     }
+    if (!empreendimentoId) {
+      showToast("error", "Selecione um empreendimento no topo antes de cadastrar.");
+      return;
+    }
+    if (!weekStart) {
+      showToast("error", "Semana não inicializada.");
+      return;
+    }
     setCreating(true);
     try {
       await createFieldBroker({
+        empreendimento_id: empreendimentoId,
+        week_start: weekStart,
         nome,
         real_estate_agency_id: novaImob || null,
         celular: novoCel.trim() || undefined,
@@ -429,6 +440,16 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
         </div>
       )}
 
+      <SemNav
+        loading={loading || !weekStart}
+        semana={semana}
+        weekNumber={week?.week_number ?? (weekStart ? isoWeekNumber(weekStart) : null)}
+        weekStart={week?.week_start ?? weekStart ?? ""}
+        weekEnd={week?.week_end ?? null}
+        validations={validations}
+        onSemanaChange={onSemanaChange}
+      />
+
       <BrokersCard
         loading={loading}
         brokers={apiBrokers}
@@ -458,16 +479,6 @@ export function ArsenalTab({ semana, onSemanaChange }: Props) {
           onSave={saveBrokerEdit}
         />
       )}
-
-      <SemNav
-        loading={loading || !weekStart}
-        semana={semana}
-        weekNumber={week?.week_number ?? (weekStart ? isoWeekNumber(weekStart) : null)}
-        weekStart={week?.week_start ?? weekStart ?? ""}
-        weekEnd={week?.week_end ?? null}
-        validations={validations}
-        onSemanaChange={onSemanaChange}
-      />
 
       {filter === "treinamento" ? (
         <AcaoList

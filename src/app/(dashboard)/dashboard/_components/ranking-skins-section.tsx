@@ -62,9 +62,10 @@ const SKINS: SkinDef[] = [
 
 type Props = {
   semana: number;
+  empreendimentoId: number | null;
 };
 
-export function RankingSkinsSection({ semana }: Props) {
+export function RankingSkinsSection({ semana, empreendimentoId }: Props) {
   const [week, setWeek] = useState<ArsenalWeek | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +83,7 @@ export function RankingSkinsSection({ semana }: Props) {
   );
 
   useEffect(() => {
-    if (!weekStart) return;
+    if (!weekStart || !empreendimentoId) return;
     const ac = new AbortController();
     queueMicrotask(() => {
       const id = ++reqIdRef.current;
@@ -90,7 +91,7 @@ export function RankingSkinsSection({ semana }: Props) {
       setError(null);
       void (async () => {
         try {
-          const data = await getArsenalWeek(weekStart);
+          const data = await getArsenalWeek(weekStart, empreendimentoId);
           if (ac.signal.aborted || id !== reqIdRef.current) return;
           setWeek(data);
         } catch (e: unknown) {
@@ -103,11 +104,12 @@ export function RankingSkinsSection({ semana }: Props) {
       })();
     });
     return () => ac.abort();
-  }, [weekStart]);
+  }, [weekStart, empreendimentoId]);
 
-  const brokers = useMemo<ArsenalBroker[]>(() => week?.brokers ?? [], [week]);
-  const validations = week?.validations ?? 0;
-  const weekLabel = week ? week.week_number : semana;
+  const effectiveWeek = weekStart && empreendimentoId ? week : null;
+  const brokers = useMemo<ArsenalBroker[]>(() => effectiveWeek?.brokers ?? [], [effectiveWeek]);
+  const validations = effectiveWeek?.validations ?? 0;
+  const weekLabel = effectiveWeek ? effectiveWeek.week_number : semana;
 
   const ranked = useMemo(() => [...brokers].sort((a, b) => b.pts - a.pts), [brokers]);
 
