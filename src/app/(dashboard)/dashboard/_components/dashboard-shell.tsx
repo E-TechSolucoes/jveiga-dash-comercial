@@ -431,7 +431,7 @@ export function DashboardShell() {
             performance={performance}
             loading={funnelLoading}
           />
-          <RankingSkinsSection semana={semana} />
+          <RankingSkinsSection semana={semana} empreendimentoId={empreendimentoId} />
           <RegrasOuroCard />
         </div>
 
@@ -455,11 +455,19 @@ export function DashboardShell() {
         </div>
 
         <div className="tc" data-active={activeTab === "arsenal"}>
-          <ArsenalTab semana={semana} onSemanaChange={setSemana} />
+          <ArsenalTab
+            semana={semana}
+            onSemanaChange={setSemana}
+            empreendimentoId={empreendimentoId}
+          />
         </div>
 
         <div className="tc" data-active={activeTab === "outbound"}>
-          <OutboundTab semana={semana} onSemanaChange={setSemana} />
+          <OutboundTab
+            semana={semana}
+            onSemanaChange={setSemana}
+            empreendimentoId={empreendimentoId}
+          />
         </div>
 
         <div className="tc" data-active={activeTab === "imob"}>

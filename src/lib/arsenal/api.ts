@@ -100,12 +100,17 @@ export type ArsenalApiError = {
   fields?: Record<string, string[]>;
 };
 
-export function getArsenalWeek(weekStart?: string): Promise<ArsenalWeek> {
-  const qs = weekStart ? `?week_start=${encodeURIComponent(weekStart)}` : "";
-  return apiFetch<ArsenalWeek>(`/api/v1/arsenal/week${qs}`);
+export function getArsenalWeek(weekStart: string, empreendimentoId: number): Promise<ArsenalWeek> {
+  const qs = new URLSearchParams({
+    week_start: weekStart,
+    empreendimento_id: String(empreendimentoId),
+  }).toString();
+  return apiFetch<ArsenalWeek>(`/api/v1/arsenal/week?${qs}`);
 }
 
 export type CreateBrokerPayload = {
+  empreendimento_id: number;
+  week_start: string;
   nome: string;
   real_estate_agency_id?: string | null;
   celular?: string;
@@ -165,10 +170,12 @@ export function upsertExecution(
   actionId: string,
   weekStart: string,
   weekday: number,
+  empreendimentoId: number,
   payload: UpsertExecutionPayload,
 ): Promise<UpsertExecutionResponse> {
+  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) }).toString();
   return apiFetch<UpsertExecutionResponse>(
-    `/api/v1/arsenal/executions/${encodeURIComponent(actionId)}/${encodeURIComponent(weekStart)}/${weekday}`,
+    `/api/v1/arsenal/executions/${encodeURIComponent(actionId)}/${encodeURIComponent(weekStart)}/${weekday}?${qs}`,
     {
       method: "PUT",
       body: JSON.stringify(payload),
