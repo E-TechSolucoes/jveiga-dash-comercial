@@ -97,7 +97,9 @@ export function StandCheckAdmin() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/stand-check-items", { cache: "no-store" });
+      const res = await fetch("/api/admin/stand-check-items?empreendimento_id=347", {
+        cache: "no-store",
+      });
       if (!res.ok) {
         setErr(await parseError(res));
         return;
@@ -186,6 +188,7 @@ export function StandCheckAdmin() {
         method,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          ...(editing.mode === "create" ? { empreendimento_id: 347 } : {}),
           code: form.code.trim(),
           label: form.label.trim(),
           icon_name: form.icon_name.trim(),

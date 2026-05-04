@@ -41,9 +41,11 @@ export type AwardCheckActivity = {
 };
 
 export async function fetchAwardCheckItemsToday(
+  empreendimentoId: number,
   signal?: AbortSignal,
 ): Promise<AwardCheckItemWithCheck[]> {
-  return apiFetch<AwardCheckItemWithCheck[]>("/api/v1/check-items-award", {
+  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
+  return apiFetch<AwardCheckItemWithCheck[]>(`/api/v1/check-items-award?${qs.toString()}`, {
     signal,
   });
 }

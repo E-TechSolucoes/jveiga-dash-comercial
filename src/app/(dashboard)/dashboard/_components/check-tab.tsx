@@ -22,13 +22,13 @@ import {
 
 import {
   CHECKLIST_META,
-  PREMIACOES,
   SKIN_ARQUITETO_THRESHOLD,
   type CheckItem,
   type ChecklistType,
   type ValidationLogEntry,
 } from "./check-data";
 import { resolveLucideIcon } from "./stand-check-items";
+import { fetchPremiacoesCategories, type PremiacaoCategoryDTO } from "./premiacoes-categories";
 import {
   fetchStandCheckItemsToday,
   formatDayLabel,
@@ -119,6 +119,11 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
   const [premError, setPremError] = useState<string | null>(null);
   const [premSaveError, setPremSaveError] = useState<string | null>(null);
   const [premSaving, setPremSaving] = useState(false);
+
+  // Premiação · cards de categoria (Indicações/Pastas/Vendas/Corujão...).
+  // Vêm do catálogo `premiacoes_categories` por empreendimento.
+  const [premCategories, setPremCategories] = useState<PremiacaoCategoryDTO[]>([]);
+  const [premCategoriesError, setPremCategoriesError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{
     kind: ToastKind;
@@ -212,9 +217,28 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
   useEffect(() => {
     if (sub !== "premiacao") return;
+    if (empreendimentoId == null) return;
+    const ctrl = new AbortController();
+    fetchPremiacoesCategories(empreendimentoId, ctrl.signal)
+      .then((cats) => {
+        setPremCategories(cats ?? []);
+        setPremCategoriesError(null);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setPremCategoriesError(
+          err instanceof Error ? err.message : "Erro ao carregar categorias de premiação",
+        );
+      });
+    return () => ctrl.abort();
+  }, [sub, empreendimentoId]);
+
+  useEffect(() => {
+    if (sub !== "premiacao") return;
+    if (empreendimentoId == null) return;
 
     const ctrl = new AbortController();
-    fetchAwardCheckItemsToday(ctrl.signal)
+    fetchAwardCheckItemsToday(empreendimentoId, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
@@ -243,7 +267,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub]);
+  }, [sub, empreendimentoId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -643,12 +667,18 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
               </h2>
               <div className="sh-sub">Toda terça-feira, antes do treinamento</div>
             </div>
-            <div className="sh-meta">{PREMIACOES.length} categorias</div>
+            <div className="sh-meta">{premCategories.length} categorias</div>
           </div>
 
+          {premCategoriesError && (
+            <div className="ck-error" role="alert">
+              {premCategoriesError}
+            </div>
+          )}
+
           <div className="prem-grid">
-            {PREMIACOES.map((p) => {
-              const Icon = p.Icon;
+            {premCategories.map((p) => {
+              const Icon = resolveLucideIcon(p.icon_name);
               return (
                 <article key={p.id} className="prem-card" data-accent={p.accent}>
                   <div className="prem-head">
