@@ -42,13 +42,16 @@ export type DailyCheckActivity = {
 };
 
 export async function fetchDailyCheckItemsToday(
-  empreendimentoId: number,
+  empreendimentoId: number | null,
   signal?: AbortSignal,
 ): Promise<DailyCheckItemWithCheck[]> {
-  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
-  return apiFetch<DailyCheckItemWithCheck[]>(`/api/v1/check-items-daily?${qs.toString()}`, {
-    signal,
-  });
+  // Catálogo é GLOBAL; empreendimento_id (opcional) só dispara o merge com
+  // a linha de check_items_daily_activity de (empreendimento, hoje).
+  const path =
+    empreendimentoId == null
+      ? "/api/v1/check-items-daily"
+      : `/api/v1/check-items-daily?empreendimento_id=${empreendimentoId}`;
+  return apiFetch<DailyCheckItemWithCheck[]>(path, { signal });
 }
 
 export async function replaceDailyCheckActivity(

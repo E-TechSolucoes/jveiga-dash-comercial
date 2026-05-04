@@ -49,15 +49,18 @@ export type StandCheckActivity = {
 };
 
 export async function fetchStandCheckItemsToday(
-  empreendimentoId: number,
+  empreendimentoId: number | null,
   signal?: AbortSignal,
 ): Promise<StandCheckItemWithCheck[]> {
-  // empreendimento_id é obrigatório; o backend já filtra is_active=true
-  // e usa hoje (BR) automaticamente.
-  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
-  return apiFetch<StandCheckItemWithCheck[]>(`/api/v1/stand-check-items?${qs.toString()}`, {
-    signal,
-  });
+  // Catálogo é GLOBAL: o backend nunca filtra os items por empreendimento.
+  // empreendimento_id (opcional) só dispara o merge com a linha de
+  // stand_check_activity de (empreendimento, hoje), populando is_checked /
+  // checked_at / note. Sem ele a lista vem com is_checked=false.
+  const path =
+    empreendimentoId == null
+      ? "/api/v1/stand-check-items"
+      : `/api/v1/stand-check-items?empreendimento_id=${empreendimentoId}`;
+  return apiFetch<StandCheckItemWithCheck[]>(path, { signal });
 }
 
 export async function replaceStandCheckActivity(

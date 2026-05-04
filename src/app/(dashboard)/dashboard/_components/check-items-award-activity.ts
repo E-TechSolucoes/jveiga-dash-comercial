@@ -41,13 +41,10 @@ export type AwardCheckActivity = {
 };
 
 export async function fetchAwardCheckItemsToday(
-  empreendimentoId: number,
   signal?: AbortSignal,
 ): Promise<AwardCheckItemWithCheck[]> {
-  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
-  return apiFetch<AwardCheckItemWithCheck[]>(`/api/v1/check-items-award?${qs.toString()}`, {
-    signal,
-  });
+  // Catálogo GLOBAL — activity continua user-scoped via PUT.
+  return apiFetch<AwardCheckItemWithCheck[]>("/api/v1/check-items-award", { signal });
 }
 
 export async function replaceAwardCheckActivity(

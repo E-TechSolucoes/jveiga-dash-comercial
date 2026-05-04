@@ -51,11 +51,9 @@ const TOAST_DURATION_MS = 3000;
 
 type Props = {
   comercialName: string;
-  // ID numérico do empreendimento selecionado no topbar. O módulo stand
-  // exige `empreendimento_id` (int64 > 0) em GET e PUT — sem isso o GET
-  // dá 400 e o PUT 422. Quando o código selecionado não é numérico
-  // (ex.: "sem-codigo-..."), o pai passa null e a aba do estande exibe
-  // mensagem em vez de chamar a API.
+  // ID numérico do empreendimento selecionado no topbar. Necessário para o
+  // PUT das activities (stand/diario) e para o GET de premiações categories
+  // — o catálogo de check items é GLOBAL, então não usa esse id.
   empreendimentoId: number | null;
 };
 
@@ -137,10 +135,6 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
   useEffect(() => {
     if (sub !== "base") return;
 
-    // Stand exige empreendimento_id. Sem ele não chama a API e a UI mostra
-    // uma mensagem orientando a seleção no topo.
-    if (empreendimentoId == null) return;
-
     queueMicrotask(() => {
       setBaseLoading(true);
     });
@@ -178,7 +172,6 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
   useEffect(() => {
     if (sub !== "diario") return;
-    if (empreendimentoId == null) return;
 
     queueMicrotask(() => {
       setDiarioLoading(true);
@@ -235,10 +228,9 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
   useEffect(() => {
     if (sub !== "premiacao") return;
-    if (empreendimentoId == null) return;
 
     const ctrl = new AbortController();
-    fetchAwardCheckItemsToday(empreendimentoId, ctrl.signal)
+    fetchAwardCheckItemsToday(ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
@@ -267,7 +259,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub, empreendimentoId]);
+  }, [sub]);
 
   useEffect(() => {
     if (!toast) return;
@@ -770,11 +762,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
           </div>
         )}
 
-        {sub === "base" && empreendimentoId == null ? (
-          <div className="ck-empty">
-            Selecione um empreendimento no topo para carregar e salvar o checklist do estande.
-          </div>
-        ) : sub === "base" && baseLoading ? (
+        {sub === "base" && baseLoading ? (
           <div className="ck-list" aria-busy="true" aria-live="polite">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>
@@ -790,10 +778,6 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
           </div>
         ) : sub === "base" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
-        ) : sub === "diario" && empreendimentoId == null ? (
-          <div className="ck-empty">
-            Selecione um empreendimento no topo para carregar e salvar a rotina diária.
-          </div>
         ) : sub === "diario" && diarioLoading ? (
           <div className="ck-list ck-list--single" aria-busy="true" aria-live="polite">
             {Array.from({ length: 4 }).map((_, i) => (
