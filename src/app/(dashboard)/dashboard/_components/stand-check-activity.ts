@@ -1,37 +1,5 @@
 import { apiFetch } from "@/lib/auth";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
-const TOKEN_KEY = "auth.token";
-
-function readBearer(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-// Fetch authed que NÃO redireciona em 401 — usado em ações onde queremos
-// surfacing o erro (toast) em vez de empurrar o usuário pro /login.
-async function authedRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const token = readBearer();
-  const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const r = await fetch(`${API_BASE}${path}`, { ...init, headers });
-
-  if (!r.ok) {
-    const body = await r.json().catch(() => null);
-    const msg =
-      (body && typeof body === "object" && "error" in body && typeof body.error === "string"
-        ? body.error
-        : null) ?? `HTTP ${r.status} ${r.statusText}`.trim();
-    throw new Error(msg);
-  }
-  if (r.status === 204) return null as T;
-  return (await r.json()) as T;
-}
-
 export type StandCheckItemWithCheck = {
   // catálogo
   id: string;
@@ -95,9 +63,7 @@ export async function fetchStandCheckItemsToday(
 export async function replaceStandCheckActivity(
   body: ReplaceStandCheckActivityBody,
 ): Promise<StandCheckActivity> {
-  // Usa authedRequest em vez de apiFetch para NÃO redirecionar em 401 —
-  // o erro precisa virar toast pro usuário ver o que aconteceu.
-  return authedRequest<StandCheckActivity>("/api/v1/stand-check-activity", {
+  return apiFetch<StandCheckActivity>("/api/v1/stand-check-activity", {
     method: "PUT",
     body: JSON.stringify(body),
   });

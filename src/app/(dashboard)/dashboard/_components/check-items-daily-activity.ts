@@ -1,35 +1,5 @@
 import { apiFetch } from "@/lib/auth";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
-const TOKEN_KEY = "auth.token";
-
-function readBearer(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-async function authedRequest<T>(path: string, init: RequestInit): Promise<T> {
-  const token = readBearer();
-  const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const r = await fetch(`${API_BASE}${path}`, { ...init, headers });
-
-  if (!r.ok) {
-    const body = await r.json().catch(() => null);
-    const msg =
-      (body && typeof body === "object" && "error" in body && typeof body.error === "string"
-        ? body.error
-        : null) ?? `HTTP ${r.status} ${r.statusText}`.trim();
-    throw new Error(msg);
-  }
-  if (r.status === 204) return null as T;
-  return (await r.json()) as T;
-}
-
 export type DailyCheckItemWithCheck = {
   id: string;
   code: string;
@@ -46,6 +16,7 @@ export type DailyCheckItemWithCheck = {
 };
 
 export type ReplaceDailyCheckActivityBody = {
+  empreendimento_id: number;
   day?: string;
   items: Array<{
     item_id: string;
@@ -71,9 +42,11 @@ export type DailyCheckActivity = {
 };
 
 export async function fetchDailyCheckItemsToday(
+  empreendimentoId: number,
   signal?: AbortSignal,
 ): Promise<DailyCheckItemWithCheck[]> {
-  return apiFetch<DailyCheckItemWithCheck[]>("/api/v1/check-items-daily", {
+  const qs = new URLSearchParams({ empreendimento_id: String(empreendimentoId) });
+  return apiFetch<DailyCheckItemWithCheck[]>(`/api/v1/check-items-daily?${qs.toString()}`, {
     signal,
   });
 }
@@ -81,7 +54,7 @@ export async function fetchDailyCheckItemsToday(
 export async function replaceDailyCheckActivity(
   body: ReplaceDailyCheckActivityBody,
 ): Promise<DailyCheckActivity> {
-  return authedRequest<DailyCheckActivity>("/api/v1/check-items-daily-activity", {
+  return apiFetch<DailyCheckActivity>("/api/v1/check-items-daily-activity", {
     method: "PUT",
     body: JSON.stringify(body),
   });
