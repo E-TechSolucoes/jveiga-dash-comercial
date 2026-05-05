@@ -313,7 +313,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
     try {
       const updated = await replaceStandCheckActivity({
-        empreendimento_id: empreendimentoId,
+        empreendimento_ids: [empreendimentoId],
         items: itemsBody,
       });
 
@@ -364,7 +364,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
     try {
       const updated = await replaceDailyCheckActivity({
-        empreendimento_id: empreendimentoId,
+        empreendimento_ids: [empreendimentoId],
         items: itemsBody,
       });
 

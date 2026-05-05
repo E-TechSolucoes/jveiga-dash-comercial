@@ -16,7 +16,9 @@ export type DailyCheckItemWithCheck = {
 };
 
 export type ReplaceDailyCheckActivityBody = {
-  empreendimento_id: number;
+  // Array obrigatório (≥ 1, todos > 0). Chave da linha agora é
+  // (day, empreendimento_ids). UI envia 1 elemento por enquanto.
+  empreendimento_ids: number[];
   day?: string;
   items: Array<{
     item_id: string;

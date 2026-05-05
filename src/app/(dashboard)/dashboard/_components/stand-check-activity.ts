@@ -19,11 +19,11 @@ export type StandCheckItemWithCheck = {
 
 export type ReplaceStandCheckActivityBody = {
   // user_id NÃO entra no body — o backend resolve pelo JWT.
-  // empreendimento_id é OBRIGATÓRIO no stand: a chave passa de
-  // (user_id, day) para (user_id, empreendimento_id, day), permitindo
-  // que o mesmo usuário tenha checklists independentes por empreendimento
-  // no mesmo dia.
-  empreendimento_id: number;
+  // empreendimento_ids: array obrigatório (≥ 1, todos > 0). A chave da
+  // linha passa a ser (day, empreendimento_ids) — uma mesma activity pode
+  // valer pra vários empreendimentos. Backend ordena+dedupa, então o
+  // cliente pode mandar em qualquer ordem. UI hoje envia 1 elemento.
+  empreendimento_ids: number[];
   day?: string;
   items: Array<{
     item_id: string;
