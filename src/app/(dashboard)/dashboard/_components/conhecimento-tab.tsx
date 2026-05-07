@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CircleDollarSign,
   Dumbbell,
@@ -13,7 +13,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { ARSENAL, OBJECOES, type ObjecaoTipo } from "./arsenal-data";
+import { listFieldActions, type FieldAction } from "@/lib/arsenal/api";
+
+import { OBJECOES, type ObjecaoTipo } from "./arsenal-data";
+import { ACTION_ICON_MAP } from "./arsenal-icons";
 
 type Sub = "acoes" | "treinos" | "objecoes";
 
@@ -36,9 +39,29 @@ const TIPO_ACCENT: Record<ObjecaoTipo, "rose" | "amber" | "violet" | "blue" | "e
 
 export function ConhecimentoTab() {
   const [sub, setSub] = useState<Sub>("acoes");
+  const [actions, setActions] = useState<FieldAction[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const acoes = ARSENAL.filter((a) => a.tipo === "acao");
-  const treinos = ARSENAL.filter((a) => a.tipo === "treinamento");
+  useEffect(() => {
+    let cancelled = false;
+    listFieldActions()
+      .then((rows) => {
+        if (!cancelled) setActions(rows ?? []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Falha ao carregar o catálogo.";
+        setLoadError(message);
+        setActions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loading = actions === null;
+  const acoes = (actions ?? []).filter((a) => a.type === "field_action");
+  const treinos = (actions ?? []).filter((a) => a.type === "training");
 
   return (
     <>
@@ -73,45 +96,58 @@ export function ConhecimentoTab() {
             </div>
           </div>
 
-          <div className="kn-grid">
-            {acoes.map((a) => {
-              const Icon = a.Icon;
-              return (
-                <article key={a.id} className="kn-card" data-accent={a.accent}>
-                  <header className="kn-card-head">
-                    <span className="kn-card-ico" data-accent={a.accent} aria-hidden>
-                      <Icon size={20} strokeWidth={1.75} />
-                    </span>
-                    <h3 className="kn-card-title">{a.nome}</h3>
-                  </header>
-                  <dl className="kn-rows">
-                    <div className="kn-row">
-                      <dt>O que é</dt>
-                      <dd>{a.descricao}</dd>
-                    </div>
-                    {a.custo && (
+          {loadError && (
+            <div className="info-banner" data-state="error">
+              <Info size={16} strokeWidth={2} />
+              <div>{loadError}</div>
+            </div>
+          )}
+
+          {loading ? (
+            <KnGridSkeleton />
+          ) : (
+            <div className="kn-grid">
+              {acoes.map((a) => {
+                const Icon = ACTION_ICON_MAP[a.icon_name] ?? Megaphone;
+                return (
+                  <article key={a.id} className="kn-card" data-accent={a.accent}>
+                    <header className="kn-card-head">
+                      <span className="kn-card-ico" data-accent={a.accent} aria-hidden>
+                        <Icon size={20} strokeWidth={1.75} />
+                      </span>
+                      <h3 className="kn-card-title">{a.nome}</h3>
+                    </header>
+                    <dl className="kn-rows">
+                      <div className="kn-row">
+                        <dt>O que é</dt>
+                        <dd>{a.descricao}</dd>
+                      </div>
+                      {a.custo && (
+                        <div className="kn-row">
+                          <dt>
+                            <CircleDollarSign size={12} strokeWidth={2} /> Custo médio
+                          </dt>
+                          <dd className="kn-row-cost">{a.custo}</dd>
+                        </div>
+                      )}
                       <div className="kn-row">
                         <dt>
-                          <CircleDollarSign size={12} strokeWidth={2} /> Custo médio
+                          <Sparkles size={12} strokeWidth={2} /> Resultado
                         </dt>
-                        <dd className="kn-row-cost">{a.custo}</dd>
+                        <dd className="kn-row-result">{a.resultado}</dd>
                       </div>
-                    )}
-                    <div className="kn-row">
-                      <dt>
-                        <Sparkles size={12} strokeWidth={2} /> Resultado
-                      </dt>
-                      <dd className="kn-row-result">{a.resultado}</dd>
-                    </div>
-                    <div className="kn-row">
-                      <dt>Como executar</dt>
-                      <dd>{a.detalhe}</dd>
-                    </div>
-                  </dl>
-                </article>
-              );
-            })}
-          </div>
+                      {a.detalhe && (
+                        <div className="kn-row">
+                          <dt>Como executar</dt>
+                          <dd>{a.detalhe}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
@@ -126,37 +162,50 @@ export function ConhecimentoTab() {
             </div>
           </div>
 
-          <div className="kn-grid">
-            {treinos.map((a) => {
-              const Icon = a.Icon;
-              return (
-                <article key={a.id} className="kn-card" data-accent={a.accent}>
-                  <header className="kn-card-head">
-                    <span className="kn-card-ico" data-accent={a.accent} aria-hidden>
-                      <Icon size={20} strokeWidth={1.75} />
-                    </span>
-                    <h3 className="kn-card-title">{a.nome}</h3>
-                  </header>
-                  <dl className="kn-rows">
-                    <div className="kn-row">
-                      <dt>Dinâmica</dt>
-                      <dd>{a.descricao}</dd>
-                    </div>
-                    <div className="kn-row">
-                      <dt>
-                        <Sparkles size={12} strokeWidth={2} /> Prêmio
-                      </dt>
-                      <dd className="kn-row-result">{a.resultado}</dd>
-                    </div>
-                    <div className="kn-row">
-                      <dt>Como aplicar</dt>
-                      <dd>{a.detalhe}</dd>
-                    </div>
-                  </dl>
-                </article>
-              );
-            })}
-          </div>
+          {loadError && (
+            <div className="info-banner" data-state="error">
+              <Info size={16} strokeWidth={2} />
+              <div>{loadError}</div>
+            </div>
+          )}
+
+          {loading ? (
+            <KnGridSkeleton />
+          ) : (
+            <div className="kn-grid">
+              {treinos.map((a) => {
+                const Icon = ACTION_ICON_MAP[a.icon_name] ?? Dumbbell;
+                return (
+                  <article key={a.id} className="kn-card" data-accent={a.accent}>
+                    <header className="kn-card-head">
+                      <span className="kn-card-ico" data-accent={a.accent} aria-hidden>
+                        <Icon size={20} strokeWidth={1.75} />
+                      </span>
+                      <h3 className="kn-card-title">{a.nome}</h3>
+                    </header>
+                    <dl className="kn-rows">
+                      <div className="kn-row">
+                        <dt>Dinâmica</dt>
+                        <dd>{a.descricao}</dd>
+                      </div>
+                      <div className="kn-row">
+                        <dt>
+                          <Sparkles size={12} strokeWidth={2} /> Prêmio
+                        </dt>
+                        <dd className="kn-row-result">{a.resultado}</dd>
+                      </div>
+                      {a.detalhe && (
+                        <div className="kn-row">
+                          <dt>Como aplicar</dt>
+                          <dd>{a.detalhe}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
@@ -201,5 +250,22 @@ export function ConhecimentoTab() {
         </>
       )}
     </>
+  );
+}
+
+function KnGridSkeleton() {
+  return (
+    <div className="kn-grid" aria-busy="true" aria-label="Carregando catálogo">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <article key={i} className="kn-card">
+          <header className="kn-card-head">
+            <span className="kn-card-ico sk-pulse" aria-hidden />
+            <div className="sk-line sk-line--md sk-pulse" />
+          </header>
+          <div className="sk-line sk-line--sm sk-pulse sk-mt-sm" />
+          <div className="sk-line sk-line--sm sk-pulse sk-mt-sm" />
+        </article>
+      ))}
+    </div>
   );
 }

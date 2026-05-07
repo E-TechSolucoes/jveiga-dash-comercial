@@ -108,6 +108,10 @@ export function getArsenalWeek(weekStart: string, empreendimentoId: number): Pro
   return apiFetch<ArsenalWeek>(`/api/v1/arsenal/week?${qs}`);
 }
 
+export function listFieldActions(): Promise<FieldAction[]> {
+  return apiFetch<FieldAction[]>(`/api/v1/field-actions`);
+}
+
 export type CreateBrokerPayload = {
   empreendimento_id: number;
   week_start: string;

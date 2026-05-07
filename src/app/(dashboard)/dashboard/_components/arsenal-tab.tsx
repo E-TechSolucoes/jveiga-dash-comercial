@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
-  Bell,
   CalendarDays,
   Check,
   ChevronDown,
@@ -11,22 +10,13 @@ import {
   ChevronRight,
   ChevronUp,
   CircleDollarSign,
-  Coffee,
   Dumbbell,
-  GraduationCap,
   Info,
   ListChecks,
   MapPin,
   Megaphone,
-  PartyPopper,
-  PhoneCall,
   Plus,
   ShieldCheck,
-  Smartphone,
-  Sword,
-  Swords,
-  Target,
-  Theater,
   Pencil,
   Trash2,
   Users,
@@ -35,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { DIAS_SEMANA, PONTOS, type Nivel } from "./arsenal-data";
+import { ACTION_ICON_MAP } from "./arsenal-icons";
 import { Toast, type ToastKind } from "./toast";
 
 const TOAST_DURATION_MS = 3000;
@@ -53,7 +44,6 @@ import {
   type ArsenalActionWithExecutions,
   type ArsenalBroker,
   type ArsenalExecution,
-  type ArsenalIconName,
   type ArsenalWeek,
 } from "@/lib/arsenal/api";
 import { listAgencies, type RealEstateAgency } from "@/lib/imob/api";
@@ -74,20 +64,6 @@ const FILTERS: {
   { id: "treinamento", label: "Treinamentos", Icon: Dumbbell, variant: "violet" },
   { id: "todos", label: "Ver todos", Icon: ListChecks, variant: "blue" },
 ];
-
-const ACTION_ICON_MAP: Record<ArsenalIconName, LucideIcon> = {
-  Megaphone,
-  Sword,
-  Smartphone,
-  Coffee,
-  PhoneCall,
-  PartyPopper,
-  GraduationCap,
-  Target,
-  Swords,
-  Bell,
-  Theater,
-};
 
 const WEEKDAY_BY_DIA: Record<string, number> = {
   Segunda: 1,
