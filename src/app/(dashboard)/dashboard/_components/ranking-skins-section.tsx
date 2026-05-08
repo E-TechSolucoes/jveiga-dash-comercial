@@ -62,10 +62,10 @@ const SKINS: SkinDef[] = [
 
 type Props = {
   semana: number;
-  empreendimentoId: number | null;
+  empreendimentoIds: number[];
 };
 
-export function RankingSkinsSection({ semana, empreendimentoId }: Props) {
+export function RankingSkinsSection({ semana, empreendimentoIds }: Props) {
   const [week, setWeek] = useState<ArsenalWeek | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,8 +82,12 @@ export function RankingSkinsSection({ semana, empreendimentoId }: Props) {
     [mounted, semana],
   );
 
+  // Backend single-id: usamos o primeiro empreendimento selecionado.
+  const empreendimentoId = empreendimentoIds[0] ?? null;
+  const idsKey = empreendimentoIds.join(",");
+
   useEffect(() => {
-    if (!weekStart || !empreendimentoId) return;
+    if (!weekStart || empreendimentoId == null) return;
     const ac = new AbortController();
     queueMicrotask(() => {
       const id = ++reqIdRef.current;
@@ -104,9 +108,9 @@ export function RankingSkinsSection({ semana, empreendimentoId }: Props) {
       })();
     });
     return () => ac.abort();
-  }, [weekStart, empreendimentoId]);
+  }, [weekStart, empreendimentoId, idsKey]);
 
-  const effectiveWeek = weekStart && empreendimentoId ? week : null;
+  const effectiveWeek = weekStart && empreendimentoId != null ? week : null;
   const brokers = useMemo<ArsenalBroker[]>(() => effectiveWeek?.brokers ?? [], [effectiveWeek]);
   const validations = effectiveWeek?.validations ?? 0;
   const weekLabel = effectiveWeek ? effectiveWeek.week_number : semana;

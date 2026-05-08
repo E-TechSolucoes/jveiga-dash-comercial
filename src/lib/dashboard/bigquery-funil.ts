@@ -21,8 +21,10 @@ function getBigQuery(): BigQuery {
 }
 
 export type FunnelPeriodInput = {
-  empreendimentoCodigo: string | null;
-  empreendimentoNome: string;
+  /** IDs numéricos dos empreendimentos selecionados que possuem ID. */
+  empreendimentoCodigos: number[];
+  /** Nomes (catálogo) dos empreendimentos selecionados — folded server-side. */
+  empreendimentoNomes: string[];
   dateFrom: string; // YYYY-MM-DD
   dateTo: string; // YYYY-MM-DD
 };
@@ -31,7 +33,7 @@ export type FunnelPeriodPayload = {
   leads: number;
   visitas: number;
   vendas: number;
-  /** COUNT(Reservas) com data_envio_sienge preenchida, todo o histórico do empreendimento (filtro por codigo_interno). */
+  /** COUNT(Reservas) com data_envio_sienge preenchida, todo o histórico do empreendimento (filtro por idempreendimento/empreendimento). */
   vendasAcumuladoHistorico: number;
   /** Média por venda no período: soma de (valor_do_contrato − unica_pos_obra_valor) ÷ nº de vendas (mesma base de Reservas do funil). */
   ticketMedio: number;
@@ -40,23 +42,34 @@ export type FunnelPeriodPayload = {
   leadsMediaHistoricaMensal: number;
 };
 
+function foldClient(value: string): string {
+  return value.normalize("NFD").replaceAll(/\p{M}/gu, "").toUpperCase().trim();
+}
+
 export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<FunnelPeriodPayload> {
   const bq = getBigQuery();
-  const codigo = input.empreendimentoCodigo?.trim() || null;
-  const nome = input.empreendimentoNome.trim();
+  const ids = (input.empreendimentoCodigos ?? []).filter((n) => Number.isFinite(n));
+  const nomes = (input.empreendimentoNomes ?? []).map(foldClient).filter((s) => s.length > 0);
   const dateFrom = input.dateFrom;
   const dateTo = input.dateTo;
+  // Sentinelas garantem arrays não vazios (BQ exige tipagem para arrays vazios).
+  const idsParam = ids.length > 0 ? ids : [-1];
+  const nomesParam = nomes.length > 0 ? nomes : ["__NEVER_MATCH__"];
 
-  const [rowsRaw] = await bq.query({
-    query: `
+  console.error("[funil] params", { ids, nomes, dateFrom, dateTo });
+
+  let rowsRaw: unknown[];
+  try {
+    [rowsRaw] = await bq.query({
+      query: `
       CREATE TEMP FUNCTION fold(s STRING) AS (
         REGEXP_REPLACE(NORMALIZE(UPPER(TRIM(IFNULL(s, ''))), NFD), r'\\pM', '')
       );
 
       WITH params AS (
         SELECT
-          @codigo AS codigo,
-          fold(@nome) AS nome_fold,
+          @ids AS ids,
+          @nomes_fold AS nomes_fold,
           DATE(@dateFrom) AS d_from,
           DATE(@dateTo) AS d_to
       ),
@@ -66,11 +79,8 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         CROSS JOIN params p
         WHERE DATE(SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', l.data_cad)) BETWEEN p.d_from AND p.d_to
           AND (
-            (p.codigo IS NOT NULL AND p.codigo != '' AND l.codigointerno_empreendimento = p.codigo)
-            OR (
-              (p.codigo IS NULL OR p.codigo = '')
-              AND fold(l.empreendimento) = p.nome_fold
-            )
+            SAFE_CAST(TRIM(CAST(l.codigointerno_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            OR fold(l.empreendimento) IN UNNEST(p.nomes_fold)
           )
       ),
       lead_unico_all_time AS (
@@ -80,11 +90,9 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         FROM ${LEADS} l
         CROSS JOIN params p
         WHERE (
-          CASE
-            WHEN p.codigo IS NOT NULL AND p.codigo != '' THEN TRIM(l.codigointerno_empreendimento) = TRIM(p.codigo)
-            ELSE fold(l.empreendimento) = p.nome_fold
-          END
-        )
+            SAFE_CAST(TRIM(CAST(l.codigointerno_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            OR fold(l.empreendimento) IN UNNEST(p.nomes_fold)
+          )
           AND SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', l.data_cad) IS NOT NULL
         GROUP BY l.idlead
       ),
@@ -113,7 +121,7 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
             DATE(v.created_at_utc)
           )
         ) BETWEEN p.d_from AND p.d_to
-          AND fold(v.empreendimento) = p.nome_fold
+          AND fold(v.empreendimento) IN UNNEST(p.nomes_fold)
       ),
       vendas_periodo AS (
         SELECT
@@ -124,11 +132,8 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         WHERE r.data_envio_sienge IS NOT NULL
           AND DATE(DATETIME(r.data_envio_sienge)) BETWEEN p.d_from AND p.d_to
           AND (
-            (p.codigo IS NOT NULL AND p.codigo != '' AND TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) = TRIM(p.codigo))
-            OR (
-              (p.codigo IS NULL OR p.codigo = '')
-              AND fold(r.empreendimento) = p.nome_fold
-            )
+            SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)
           )
       ),
       vendas_count AS (
@@ -140,11 +145,8 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         CROSS JOIN params p
         WHERE r.data_envio_sienge IS NOT NULL
           AND (
-            (p.codigo IS NOT NULL AND p.codigo != '' AND TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) = TRIM(p.codigo))
-            OR (
-              (p.codigo IS NULL OR p.codigo = '')
-              AND fold(r.empreendimento) = p.nome_fold
-            )
+            SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)
           )
       ),
       vgv_ticket_periodo AS (
@@ -162,13 +164,23 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         (SELECT vgv_periodo FROM vgv_ticket_periodo) AS vgv_periodo,
         (SELECT media_mensal FROM leads_media_historica) AS leads_media_historica_mensal
     `,
-    params: {
-      codigo,
-      nome,
-      dateFrom,
-      dateTo,
-    },
-  });
+      params: {
+        ids: idsParam,
+        nomes_fold: nomesParam,
+        dateFrom,
+        dateTo,
+      },
+      types: {
+        ids: ["INT64"],
+        nomes_fold: ["STRING"],
+        dateFrom: "STRING",
+        dateTo: "STRING",
+      },
+    });
+  } catch (err) {
+    console.error("[funil] BQ error", { ids, nomes, dateFrom, dateTo, error: err });
+    throw err;
+  }
 
   const row = (
     rowsRaw as Array<{
@@ -181,7 +193,7 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       leads_media_historica_mensal: number | string | null;
     }>
   )[0];
-  return {
+  const result = {
     leads: Number(row?.leads ?? 0),
     visitas: Number(row?.visitas ?? 0),
     vendas: Number(row?.vendas ?? 0),
@@ -190,4 +202,6 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
     vgvPeriodo: Number(row?.vgv_periodo ?? 0),
     leadsMediaHistoricaMensal: Number(row?.leads_media_historica_mensal ?? 0),
   };
+  console.error("[funil] result", { ids, nomes, ...result });
+  return result;
 }

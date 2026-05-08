@@ -66,9 +66,21 @@ export type RecepHistDia = {
   tarde: number;
 };
 
+export type RecepEmpreendimentoMatched = {
+  id: number | null;
+  nome: string | null;
+};
+
 export type RecepPayload = {
+  /** Primeiro empreendimento resolvido (compat com clientes legados que mostram um único id). */
   empreendimentoId: number | null;
+  /** Nome canônico do primeiro empreendimento resolvido. */
   empreendimentoNomeMatch: string | null;
+  /** Lista completa de empreendimentos resolvidos a partir dos `nomesSelecionados`. */
+  empreendimentosMatched: RecepEmpreendimentoMatched[];
+  /** Lista crua dos nomes selecionados no topbar. */
+  nomesSelecionados: string[];
+  /** Compat: primeiro nome selecionado. */
   nomeSelecionado: string;
   visitasHoje: RecepVisitaRow[];
   plantao: RecepPlantaoRow[];
@@ -90,30 +102,45 @@ function todayDataBr(): string {
   return `${d}/${m}/${y}`;
 }
 
-export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepPayload> {
+export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<RecepPayload> {
+  console.error("[recep] params", { nomesSelecionados });
   const bq = getBigQuery();
-  const trimmed = nomeSelecionado.trim();
+  const trimmedAll = nomesSelecionados.map((n) => n.trim()).filter((n) => n.length > 0);
   const visitasEmpRows = await loadVisitasEmpreendimentos();
   const refs: EmpreendimentoRef[] = visitasEmpRows.map((r) => ({
     id: r.empreendimento_id,
     nome: r.empreendimento ?? "",
   }));
-  const resolved = trimmed ? resolveEmpreendimentoFromRows(trimmed, refs) : null;
-  const empreendimentoId = resolved?.id ?? null;
-  const empreendimentoNomeMatch = resolved?.nome ?? null;
+
+  const matchedMap = new Map<number, RecepEmpreendimentoMatched>();
+  for (const trimmed of trimmedAll) {
+    const resolved = resolveEmpreendimentoFromRows(trimmed, refs);
+    if (resolved && !matchedMap.has(resolved.id)) {
+      matchedMap.set(resolved.id, { id: resolved.id, nome: resolved.nome });
+    }
+  }
+  const matched: RecepEmpreendimentoMatched[] = [...matchedMap.values()];
+  const ids = matched
+    .map((m) => m.id)
+    .filter((id): id is number => typeof id === "number" && Number.isFinite(id));
+  const empreendimentoId = matched[0]?.id ?? null;
+  const empreendimentoNomeMatch = matched[0]?.nome ?? null;
+  const nomeSelecionado = trimmedAll[0] ?? "";
   const todayStr = todayDataBr();
 
   const empty: RecepPayload = {
     empreendimentoId,
     empreendimentoNomeMatch,
-    nomeSelecionado: trimmed,
+    empreendimentosMatched: matched,
+    nomesSelecionados: trimmedAll,
+    nomeSelecionado,
     visitasHoje: [],
     plantao: [],
     historico: [],
     totals: { visitasHoje: 0, visitasPeriodo: 0, historicDays: 14 },
   };
 
-  const foldKey = foldEmpreendimentoNome(trimmed);
+  const foldKeys = new Set(trimmedAll.map(foldEmpreendimentoNome).filter((s) => s.length > 0));
 
   const [plantaoRawUntyped] = await bq.query({
     query: `
@@ -126,22 +153,25 @@ export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepP
   });
   const plantaoRaw = plantaoRawUntyped as RecepPlantaoRow[];
   const plantao = plantaoRaw.filter(
-    (p) => p.empreendimento && foldEmpreendimentoNome(p.empreendimento) === foldKey,
+    (p) => p.empreendimento && foldKeys.has(foldEmpreendimentoNome(p.empreendimento)),
   );
 
-  if (empreendimentoId === null) {
+  if (ids.length === 0) {
     return { ...empty, plantao };
   }
+
+  const idsParam = ids;
 
   const [visitasHojeRaw] = await bq.query({
     query: `
       SELECT hora, nome AS cliente, origem, corretor
       FROM ${VISITAS}
-      WHERE empreendimento_id = @id
+      WHERE empreendimento_id IN UNNEST(@ids)
         AND data = @hoje
       ORDER BY hora
     `,
-    params: { id: empreendimentoId, hoje: todayStr },
+    params: { ids: idsParam, hoje: todayStr },
+    types: { ids: ["INT64"], hoje: "STRING" },
   });
   const visitasHoje = visitasHojeRaw as RecepVisitaRow[];
 
@@ -152,7 +182,7 @@ export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepP
           SAFE.PARSE_DATE('%d/%m/%Y', data) AS d,
           LOWER(TRIM(IFNULL(turno, ''))) AS turno_lc
         FROM ${VISITAS}
-        WHERE empreendimento_id = @id
+        WHERE empreendimento_id IN UNNEST(@ids)
           AND data IS NOT NULL
       ),
       filtered AS (
@@ -171,7 +201,8 @@ export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepP
       GROUP BY d
       ORDER BY d DESC
     `,
-    params: { id: empreendimentoId },
+    params: { ids: idsParam },
+    types: { ids: ["INT64"] },
   });
   const histRows = histRowsRaw as {
     data_label: string;
@@ -189,10 +220,12 @@ export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepP
 
   const visitasPeriodo = historico.reduce((s, h) => s + h.visitas, 0);
 
-  return {
+  const payload: RecepPayload = {
     empreendimentoId,
     empreendimentoNomeMatch,
-    nomeSelecionado: trimmed,
+    empreendimentosMatched: matched,
+    nomesSelecionados: trimmedAll,
+    nomeSelecionado,
     visitasHoje,
     plantao,
     historico,
@@ -202,4 +235,13 @@ export async function fetchRecepPayload(nomeSelecionado: string): Promise<RecepP
       historicDays: 14,
     },
   };
+  console.error("[recep] result", {
+    nomesSelecionados: trimmedAll,
+    matched,
+    visitasHojeCount: visitasHoje.length,
+    plantaoCount: plantao.length,
+    historicoDays: historico.length,
+    visitasPeriodo,
+  });
+  return payload;
 }

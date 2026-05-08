@@ -102,10 +102,13 @@ function errorMessage(err: unknown): string {
 type Props = {
   semana: number;
   onSemanaChange: (next: number) => void;
-  empreendimentoId: number | null;
+  empreendimentoIds: number[];
 };
 
-export function ArsenalTab({ semana, onSemanaChange, empreendimentoId }: Props) {
+export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props) {
+  // Backend single-id: usa o primeiro empreendimento selecionado.
+  const empreendimentoId = empreendimentoIds[0] ?? null;
+
   const [filter, setFilter] = useState<Filter>("acao");
 
   const [week, setWeek] = useState<ArsenalWeek | null>(null);

@@ -25,9 +25,16 @@ type HistDia = {
   tarde: number;
 };
 
+type RecepEmpreendimentoMatched = {
+  id: number | null;
+  nome: string | null;
+};
+
 type RecepApiPayload = {
   empreendimentoId: number | null;
   empreendimentoNomeMatch: string | null;
+  empreendimentosMatched?: RecepEmpreendimentoMatched[];
+  nomesSelecionados?: string[];
   nomeSelecionado: string;
   visitasHoje: {
     hora: string | null;
@@ -85,14 +92,20 @@ function plantaoToCorretores(rows: RecepApiPayload["plantao"]): RecepCorretor[] 
   return [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
-export function RecepTab({ empreendimentoNome }: { empreendimentoNome: string }) {
+export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: string[] }) {
   const [data, setData] = useState<RecepApiPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const nomesNorm = useMemo(
+    () => empreendimentosNomes.map((s) => s.trim()).filter((s) => s.length > 0),
+    [empreendimentosNomes],
+  );
+  const nomesKey = nomesNorm.join("||");
+
   const load = useCallback(
     async (signal: AbortSignal) => {
-      if (!empreendimentoNome.trim()) {
+      if (nomesNorm.length === 0) {
         setData(null);
         setError(null);
         return;
@@ -100,7 +113,7 @@ export function RecepTab({ empreendimentoNome }: { empreendimentoNome: string })
       setLoading(true);
       setError(null);
       try {
-        const q = new URLSearchParams({ nome: empreendimentoNome.trim() });
+        const q = new URLSearchParams({ nomes: nomesKey });
         const res = await fetch(`/api/dashboard/recep?${q}`, { signal, cache: "no-store" });
         const json = (await res.json()) as RecepApiPayload & { error?: string };
         if (!res.ok) {
@@ -117,7 +130,7 @@ export function RecepTab({ empreendimentoNome }: { empreendimentoNome: string })
         setLoading(false);
       }
     },
-    [empreendimentoNome],
+    [nomesKey, nomesNorm.length],
   );
 
   useEffect(() => {
@@ -357,15 +370,24 @@ export function RecepTab({ empreendimentoNome }: { empreendimentoNome: string })
         <Gift size={16} strokeWidth={2} />
         <div>
           Dados em tempo real do BigQuery (<code className="text-xs">jeronimo-444814.dwh</code>
-          ). Filtro pelo empreendimento do cabeçalho
-          {data?.empreendimentoId != null && (
+          ). Filtro pelos empreendimentos do cabeçalho
+          {data?.empreendimentosMatched && data.empreendimentosMatched.length > 0 ? (
+            <>
+              {" "}
+              —{" "}
+              {data.empreendimentosMatched
+                .filter((m) => m.id != null)
+                .map((m) => `${m.id} (${m.nome ?? ""})`)
+                .join(", ")}
+            </>
+          ) : data?.empreendimentoId != null ? (
             <>
               {" "}
               — <code>empreendimento_id</code> = {data.empreendimentoId}
               {data.empreendimentoNomeMatch && <> ({data.empreendimentoNomeMatch})</>}
             </>
-          )}
-          {data?.empreendimentoId == null && empreendimentoNome.trim() && (
+          ) : null}
+          {data?.empreendimentoId == null && nomesNorm.length > 0 && (
             <> — sem correspondência na tabela Visitas (plantão filtrado só por nome).</>
           )}
         </div>

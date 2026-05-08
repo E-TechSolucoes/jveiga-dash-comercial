@@ -51,10 +51,12 @@ const TOAST_DURATION_MS = 3000;
 
 type Props = {
   comercialName: string;
-  // ID numérico do empreendimento selecionado no topbar. Necessário para o
-  // PUT das activities (stand/diario) e para o GET de premiações categories
-  // — o catálogo de check items é GLOBAL, então não usa esse id.
-  empreendimentoId: number | null;
+  // IDs numéricos dos empreendimentos selecionados no topbar. O PUT das
+  // activities (stand/diario) já aceita um array (chave (day, empreendimento_ids)).
+  // O catálogo de check items é GLOBAL — só o GET de premiações categories e
+  // o merge do estado de hoje precisam de um id, e nesse caso usamos o primeiro
+  // selecionado como contexto de leitura.
+  empreendimentoIds: number[];
 };
 
 type StateMap = Record<string, boolean>;
@@ -81,7 +83,10 @@ function countDone(map: StateMap, items: CheckItem[]): number {
   return items.reduce((n, item) => n + (map[item.id] ? 1 : 0), 0);
 }
 
-export function CheckTab({ comercialName, empreendimentoId }: Props) {
+export function CheckTab({ comercialName, empreendimentoIds }: Props) {
+  // Primeiro id selecionado dirige reads. PUT escreve em todos via array.
+  const empreendimentoId = empreendimentoIds[0] ?? null;
+
   const [sub, setSub] = useState<ChecklistType>("base");
 
   const [log, setLog] = useState<ValidationLogEntry[]>([]);
@@ -313,7 +318,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
     try {
       const updated = await replaceStandCheckActivity({
-        empreendimento_ids: [empreendimentoId],
+        empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
 
@@ -364,7 +369,7 @@ export function CheckTab({ comercialName, empreendimentoId }: Props) {
 
     try {
       const updated = await replaceDailyCheckActivity({
-        empreendimento_ids: [empreendimentoId],
+        empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
 

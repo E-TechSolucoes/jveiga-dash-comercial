@@ -39,7 +39,8 @@ export type PastasKpis = {
 
 type Props = {
   semNome: boolean;
-  empresaNome: string;
+  empresasNomes: string[];
+  empresasCodigos: string[];
   periodBounds: { from: string; to: string } | null;
   loading: boolean;
   error: string | null;
@@ -219,10 +220,12 @@ function PastaCardSkel() {
 const PASTAS_PAGE_SIZE = 8;
 
 function PastasListSection({
-  empresaNome,
+  empresasNomes,
+  empresasCodigos,
   periodBounds,
 }: {
-  empresaNome: string;
+  empresasNomes: string[];
+  empresasCodigos: string[];
   periodBounds: { from: string; to: string };
 }) {
   const [page, setPage] = useState(1);
@@ -236,6 +239,9 @@ function PastasListSection({
     [listTotal],
   );
 
+  const nomesKey = empresasNomes.join("||");
+  const codigosKey = empresasCodigos.join(",");
+
   useEffect(() => {
     const ac = new AbortController();
     const signal = ac.signal;
@@ -243,13 +249,14 @@ function PastasListSection({
     void (async () => {
       await Promise.resolve();
       if (signal.aborted) return;
-      if (!empresaNome.trim() || !periodBounds) return;
+      if (empresasNomes.length === 0 || !periodBounds) return;
 
       setListLoading(true);
       setListError(null);
       try {
         const params = new URLSearchParams({
-          nome: empresaNome.trim(),
+          nomes: nomesKey,
+          codigos: codigosKey,
           from: periodBounds.from,
           to: periodBounds.to,
           page: String(page),
@@ -288,7 +295,8 @@ function PastasListSection({
     })();
 
     return () => ac.abort(new DOMException("Superseded pastas list", "AbortError"));
-  }, [page, empresaNome, periodBounds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, nomesKey, codigosKey, periodBounds]);
 
   const fromIdx = listTotal === 0 ? 0 : (page - 1) * PASTAS_PAGE_SIZE + 1;
   const toIdx = listTotal === 0 ? 0 : Math.min(page * PASTAS_PAGE_SIZE, listTotal);
@@ -379,7 +387,15 @@ function PastasListSection({
   );
 }
 
-export function PastasTab({ semNome, empresaNome, periodBounds, loading, error, kpis }: Props) {
+export function PastasTab({
+  semNome,
+  empresasNomes,
+  empresasCodigos,
+  periodBounds,
+  loading,
+  error,
+  kpis,
+}: Props) {
   const showDash = semNome;
   const showSkeleton = !semNome && !error && (loading || kpis === null);
 
@@ -488,8 +504,9 @@ export function PastasTab({ semNome, empresaNome, periodBounds, loading, error, 
 
       {!semNome && periodBounds && !error ? (
         <PastasListSection
-          key={`${empresaNome}|${periodBounds.from}|${periodBounds.to}`}
-          empresaNome={empresaNome}
+          key={`${empresasNomes.join("||")}|${periodBounds.from}|${periodBounds.to}`}
+          empresasNomes={empresasNomes}
+          empresasCodigos={empresasCodigos}
           periodBounds={periodBounds}
         />
       ) : null}

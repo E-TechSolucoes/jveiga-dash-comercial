@@ -6,15 +6,44 @@ function isIsoDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
+function parseNomes(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split("||")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function parseCodigos(value: string | null): number[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return "Falha ao consultar BigQuery.";
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const nomeParam = request.nextUrl.searchParams.get("nome")?.trim() ?? "";
-  const fromParam = request.nextUrl.searchParams.get("from");
-  const toParam = request.nextUrl.searchParams.get("to");
-  const pageRaw = request.nextUrl.searchParams.get("page");
+  const sp = request.nextUrl.searchParams;
+  const nomes = parseNomes(sp.get("nomes") ?? sp.get("nome"));
+  const codigos = parseCodigos(sp.get("codigos") ?? sp.get("codigo"));
+  const fromParam = sp.get("from");
+  const toParam = sp.get("to");
+  const pageRaw = sp.get("page");
   const page = pageRaw != null ? Number.parseInt(pageRaw, 10) : 1;
 
-  if (!nomeParam) {
-    return NextResponse.json({ error: "Parâmetro nome é obrigatório." }, { status: 400 });
+  if (nomes.length < 1) {
+    return NextResponse.json(
+      { error: "Parâmetro nomes é obrigatório (||-separado)." },
+      { status: 400 },
+    );
   }
   if (!isIsoDate(fromParam) || !isIsoDate(toParam)) {
     return NextResponse.json(
@@ -28,7 +57,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const payload = await fetchPastasPessoasPage({
-      empreendimentoNome: nomeParam,
+      empreendimentoCodigos: codigos,
+      empreendimentoNomes: nomes,
       dateFrom: fromParam,
       dateTo: toParam,
       page,
@@ -36,12 +66,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(payload, { status: 200 });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : typeof err === "object" && err && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Falha ao consultar BigQuery.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }

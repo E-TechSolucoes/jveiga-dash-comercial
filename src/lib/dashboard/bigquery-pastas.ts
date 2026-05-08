@@ -19,8 +19,10 @@ function getBigQuery(): BigQuery {
 }
 
 export type PastasPeriodInput = {
-  /** Nome do empreendimento (ex.: do header), comparado a `Pastas.empreendimento` com normalização NFD. */
-  empreendimentoNome: string;
+  /** IDs numéricos dos empreendimentos selecionados que possuem ID. */
+  empreendimentoCodigos: number[];
+  /** Nomes (catálogo) dos empreendimentos selecionados — comparados a `Pastas.empreendimento` (NFD). */
+  empreendimentoNomes: string[];
   dateFrom: string; // YYYY-MM-DD
   dateTo: string; // YYYY-MM-DD
 };
@@ -53,25 +55,38 @@ export type PastasListPayload = {
   items: PastasPessoaItem[];
 };
 
+function foldClient(value: string): string {
+  return value.normalize("NFD").replaceAll(/\p{M}/gu, "").toUpperCase().trim();
+}
+
 /**
- * Agrega `dwh.Pastas` por `empreendimento` (nome) e data de `referencia_data` no período.
+ * Agrega `dwh.Pastas` por `idempreendimento`/`empreendimento` (nome) e data de
+ * `referencia_data` no período. Aceita múltiplos empreendimentos via UNNEST.
  * `idsituacao`: 5 → Concluídas (Aprovado); 3, 6 → Distratadas (Cancelada, Reprovado); demais → Em andamento.
  */
 export async function fetchPastasTotais(input: PastasPeriodInput): Promise<PastasTotaisPayload> {
   const bq = getBigQuery();
-  const nome = input.empreendimentoNome.trim();
+  const ids = (input.empreendimentoCodigos ?? []).filter((n) => Number.isFinite(n));
+  const nomes = (input.empreendimentoNomes ?? []).map(foldClient).filter((s) => s.length > 0);
   const dateFrom = input.dateFrom;
   const dateTo = input.dateTo;
+  const idsParam = ids.length > 0 ? ids : [-1];
+  const nomesParam = nomes.length > 0 ? nomes : ["__NEVER_MATCH__"];
 
-  const [rowsRaw] = await bq.query({
-    query: `
+  console.error("[pastas] params", { ids, nomes, dateFrom, dateTo });
+
+  let rowsRaw: unknown[];
+  try {
+    [rowsRaw] = await bq.query({
+      query: `
       CREATE TEMP FUNCTION fold(s STRING) AS (
         REGEXP_REPLACE(NORMALIZE(UPPER(TRIM(IFNULL(s, ''))), NFD), r'\\pM', '')
       );
 
       WITH params AS (
         SELECT
-          fold(@nome) AS nome_fold,
+          @ids AS ids,
+          @nomes_fold AS nomes_fold,
           DATE(@dateFrom) AS d_from,
           DATE(@dateTo) AS d_to
       ),
@@ -80,7 +95,10 @@ export async function fetchPastasTotais(input: PastasPeriodInput): Promise<Pasta
           p.idsituacao AS st
         FROM ${PASTAS} p
         CROSS JOIN params pr
-        WHERE fold(p.empreendimento) = pr.nome_fold
+        WHERE (
+            SAFE_CAST(TRIM(CAST(p.idempreendimento AS STRING)) AS INT64) IN UNNEST(pr.ids)
+            OR fold(p.empreendimento) IN UNNEST(pr.nomes_fold)
+          )
           AND p.referencia_data IS NOT NULL
           AND TRIM(p.referencia_data) != ''
           AND DATE(
@@ -103,12 +121,23 @@ export async function fetchPastasTotais(input: PastasPeriodInput): Promise<Pasta
         COUNTIF(bucket = 'distratadas') AS distratadas
       FROM bucketed
     `,
-    params: {
-      nome,
-      dateFrom,
-      dateTo,
-    },
-  });
+      params: {
+        ids: idsParam,
+        nomes_fold: nomesParam,
+        dateFrom,
+        dateTo,
+      },
+      types: {
+        ids: ["INT64"],
+        nomes_fold: ["STRING"],
+        dateFrom: "STRING",
+        dateTo: "STRING",
+      },
+    });
+  } catch (err) {
+    console.error("[pastas] BQ error", { ids, nomes, dateFrom, dateTo, error: err });
+    throw err;
+  }
 
   const row = (
     rowsRaw as Array<{
@@ -118,12 +147,14 @@ export async function fetchPastasTotais(input: PastasPeriodInput): Promise<Pasta
       distratadas: number | string;
     }>
   )[0];
-  return {
+  const result = {
     total: Number(row?.total ?? 0),
     emAndamento: Number(row?.em_andamento ?? 0),
     concluidas: Number(row?.concluidas ?? 0),
     distratadas: Number(row?.distratadas ?? 0),
   };
+  console.error("[pastas] result", { ids, nomes, ...result });
+  return result;
 }
 
 export type PastasListInput = PastasPeriodInput & {
@@ -138,7 +169,8 @@ const PASTAS_FILTER_CTE = `
 
   WITH params AS (
     SELECT
-      fold(@nome) AS nome_fold,
+      @ids AS ids,
+      @nomes_fold AS nomes_fold,
       DATE(@dateFrom) AS d_from,
       DATE(@dateTo) AS d_to
   ),
@@ -158,7 +190,10 @@ const PASTAS_FILTER_CTE = `
       ) AS ref_d
     FROM ${PASTAS} p
     CROSS JOIN params pr
-    WHERE fold(p.empreendimento) = pr.nome_fold
+    WHERE (
+        SAFE_CAST(TRIM(CAST(p.idempreendimento AS STRING)) AS INT64) IN UNNEST(pr.ids)
+        OR fold(p.empreendimento) IN UNNEST(pr.nomes_fold)
+      )
       AND p.referencia_data IS NOT NULL
       AND TRIM(p.referencia_data) != ''
       AND DATE(
@@ -167,19 +202,34 @@ const PASTAS_FILTER_CTE = `
   )
 `;
 
+const PASTAS_FILTER_TYPES: Record<string, string | string[]> = {
+  ids: ["INT64"],
+  nomes_fold: ["STRING"],
+  dateFrom: "STRING",
+  dateTo: "STRING",
+};
+
 /**
  * Lista pastas (pessoa, situação, valor) com o mesmo filtro de nome/período, paginada.
  */
 export async function fetchPastasPessoasPage(input: PastasListInput): Promise<PastasListPayload> {
   const bq = getBigQuery();
-  const nome = input.empreendimentoNome.trim();
+  const ids = (input.empreendimentoCodigos ?? []).filter((n) => Number.isFinite(n));
+  const nomes = (input.empreendimentoNomes ?? []).map(foldClient).filter((s) => s.length > 0);
   const dateFrom = input.dateFrom;
   const dateTo = input.dateTo;
   const page = Math.max(1, Math.floor(Number(input.page)) || 1);
   const pageSize = Math.min(50, Math.max(1, Math.floor(input.pageSize ?? PASTAS_PAGE_SIZE)));
   const offset = (page - 1) * pageSize;
+  const idsParam = ids.length > 0 ? ids : [-1];
+  const nomesParam = nomes.length > 0 ? nomes : ["__NEVER_MATCH__"];
 
-  const baseParams = { nome, dateFrom, dateTo };
+  const baseParams = {
+    ids: idsParam,
+    nomes_fold: nomesParam,
+    dateFrom,
+    dateTo,
+  };
 
   const [countRows] = await bq.query({
     query: `
@@ -187,6 +237,7 @@ export async function fetchPastasPessoasPage(input: PastasListInput): Promise<Pa
       SELECT COUNT(*) AS c FROM filtered
     `,
     params: baseParams,
+    types: { ...PASTAS_FILTER_TYPES },
   });
 
   const total = Number((countRows as Array<{ c: number | string }>)[0]?.c ?? 0);
@@ -216,6 +267,11 @@ export async function fetchPastasPessoasPage(input: PastasListInput): Promise<Pa
       ...baseParams,
       pageSize,
       offset,
+    },
+    types: {
+      ...PASTAS_FILTER_TYPES,
+      pageSize: "INT64",
+      offset: "INT64",
     },
   });
 

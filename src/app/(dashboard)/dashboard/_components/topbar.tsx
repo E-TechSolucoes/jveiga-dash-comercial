@@ -1,17 +1,18 @@
 "use client";
 
 import { Calendar, Crown, Swords, Target } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { isoWeekNumber } from "@/lib/arsenal/api";
 
+import { EmpreendimentosMultiSelect } from "./empreendimentos-multiselect";
 import type { EmpresaOption, PeriodoId } from "./types";
 import { UserMenu } from "./user-menu";
 
 type Props = {
-  empresa: string;
+  empresas: string[];
   empresaOptions: EmpresaOption[];
-  onEmpresaChange: (v: string) => void;
+  onEmpresasChange: (next: string[]) => void;
 
   periodo: PeriodoId;
   onPeriodoChange: (v: PeriodoId) => void;
@@ -32,10 +33,22 @@ type Props = {
   checklistPct: number;
 };
 
+/** Mantém apenas o nome do empreendimento no rótulo (remove "ID - " quando presente). */
+function empreendimentosOnlyName(options: EmpresaOption[]): EmpresaOption[] {
+  return options.map((opt) => {
+    const label = opt.label;
+    const emDash = label.indexOf(" — ");
+    if (emDash >= 0) return { ...opt, label: label.slice(emDash + 3).trim() };
+    const hyphen = label.indexOf(" - ");
+    if (hyphen >= 0) return { ...opt, label: label.slice(hyphen + 3).trim() };
+    return opt;
+  });
+}
+
 export function Topbar({
-  empresa,
+  empresas,
   empresaOptions,
-  onEmpresaChange,
+  onEmpresasChange,
   periodo,
   onPeriodoChange,
   customFrom,
@@ -60,6 +73,11 @@ export function Topbar({
     return isoWeekNumber(`${y}-${m}-${d}`);
   });
 
+  const multiSelectOptions = useMemo(
+    () => empreendimentosOnlyName(empresaOptions),
+    [empresaOptions],
+  );
+
   return (
     <>
       <header className="topbar">
@@ -78,18 +96,12 @@ export function Topbar({
         </div>
 
         <div className="topbar-filters">
-          <select
-            className="select"
-            value={empresa}
-            onChange={(e) => onEmpresaChange(e.target.value)}
-            aria-label="Empreendimento"
-          >
-            {empresaOptions.map((opt) => (
-              <option key={opt.label} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <EmpreendimentosMultiSelect
+            options={multiSelectOptions}
+            selected={empresas}
+            onChange={onEmpresasChange}
+            ariaLabel="Empreendimentos selecionados"
+          />
 
           <select
             className="select"

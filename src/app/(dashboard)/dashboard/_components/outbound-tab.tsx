@@ -46,7 +46,7 @@ const TOAST_DURATION_MS = 3000;
 type Props = {
   semana: number;
   onSemanaChange: (next: number) => void;
-  empreendimentoId: number | null;
+  empreendimentoIds: number[];
 };
 
 function errorMessage(err: unknown): string {
@@ -70,7 +70,10 @@ function endOfWeek(weekStartISO: string): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-export function OutboundTab({ semana, onSemanaChange, empreendimentoId }: Props) {
+export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props) {
+  // Backend single-id: usa o primeiro empreendimento selecionado.
+  const empreendimentoId = empreendimentoIds[0] ?? null;
+
   // Defer weekStart computation to client mount: depends on Date in BR tz,
   // so SSR vs first client render would diverge.
   const [mounted, setMounted] = useState(false);

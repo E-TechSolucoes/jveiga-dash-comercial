@@ -43,7 +43,7 @@ function empreendimentoNomeFromHeaderLabel(label: string): string {
 function slugify(value: string): string {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -57,12 +57,48 @@ const EMPRESAS: EmpresaOption[] = (empreendimentosData as EmpreendimentoRow[]).m
   };
 });
 
-const STORAGE_EMPRESA = "dash.empresa";
+const VALUE_TO_NOME = new Map<string, string>(
+  EMPRESAS.map((e) => [e.value, empreendimentoNomeFromHeaderLabel(e.label)]),
+);
+
+function empresaTemIdNumerico(value: string): boolean {
+  if (!value || value.startsWith("sem-codigo-")) return false;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0;
+}
+
+const COOKIE_EMPRESAS = "dash_empresas";
+const COOKIE_MAX_AGE_SECS = 60 * 60 * 24 * 365 * 5;
 const STORAGE_PERIODO = "dash.periodo";
 const STORAGE_CUSTOM_FROM = "dash.customFrom";
 const STORAGE_CUSTOM_TO = "dash.customTo";
+const LEGACY_STORAGE_EMPRESA = "dash.empresa";
 
 const PERIODOS_VALIDOS: readonly PeriodoId[] = ["semana", "mes", "ultimo_mes", "custom"];
+
+function readEmpresasCookie(): string[] | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_EMPRESAS}=([^;]*)`));
+  if (!match) return null;
+  try {
+    const decoded = decodeURIComponent(match[1] ?? "");
+    if (!decoded) return null;
+    const parsed = JSON.parse(decoded);
+    if (Array.isArray(parsed)) {
+      const arr = parsed.filter((v): v is string => typeof v === "string");
+      return arr.length > 0 ? arr : null;
+    }
+  } catch {
+    // ignora cookie corrompido
+  }
+  return null;
+}
+
+function writeEmpresasCookie(values: string[]) {
+  if (typeof document === "undefined") return;
+  const encoded = encodeURIComponent(JSON.stringify(values));
+  document.cookie = `${COOKIE_EMPRESAS}=${encoded}; path=/; max-age=${COOKIE_MAX_AGE_SECS}; samesite=lax`;
+}
 
 function formatBrDate(d: Date): string {
   return d.toLocaleDateString("pt-BR", {
@@ -88,13 +124,16 @@ function computeRangeLabel(periodo: PeriodoId, customFrom: string, customTo: str
   }
 
   const today = new Date();
-  const from = new Date();
+  const from = new Date(today);
+  const to = new Date(today);
   if (periodo === "semana") {
-    from.setDate(today.getDate() - 6);
+    const dow = today.getDay();
+    from.setDate(today.getDate() - dow);
+    to.setDate(today.getDate() + (6 - dow));
   } else if (periodo === "mes") {
     from.setDate(1);
   }
-  return `${formatBrDate(from)} → ${formatBrDate(today)}`;
+  return `${formatBrDate(from)} → ${formatBrDate(to)}`;
 }
 
 function toIsoDate(d: Date): string {
@@ -116,7 +155,9 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
   const to = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const from = new Date(to);
   if (periodo === "semana") {
-    from.setDate(to.getDate() - 6);
+    const dow = to.getDay();
+    from.setDate(to.getDate() - dow);
+    to.setDate(to.getDate() + (6 - dow));
   } else if (periodo === "mes") {
     from.setDate(1);
   } else {
@@ -130,34 +171,43 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
 export function DashboardShell() {
   const { session } = useAuth();
   const persistedFilters = useMemo(() => {
+    const fallbackEmpresas = EMPRESAS[0]?.value ? [EMPRESAS[0].value] : [];
     if (typeof window === "undefined") {
       return {
-        empresa: EMPRESAS[0]?.value ?? "",
+        empresas: fallbackEmpresas,
         periodo: "ultimo_mes" as PeriodoId,
         customFrom: "",
         customTo: "",
       };
     }
     try {
-      const storedEmpresa = window.localStorage.getItem(STORAGE_EMPRESA);
-      const empresa =
-        storedEmpresa && EMPRESAS.some((e) => e.value === storedEmpresa)
-          ? storedEmpresa
-          : (EMPRESAS[0]?.value ?? "");
+      const validValues = new Set(EMPRESAS.map((e) => e.value));
+      let empresas: string[] | null = null;
+
+      const cookieValues = readEmpresasCookie();
+      if (cookieValues) {
+        empresas = cookieValues.filter((v) => validValues.has(v));
+      }
+      if (!empresas || empresas.length === 0) {
+        const legacy = window.localStorage.getItem(LEGACY_STORAGE_EMPRESA);
+        if (legacy && validValues.has(legacy)) empresas = [legacy];
+      }
+      if (!empresas || empresas.length === 0) empresas = fallbackEmpresas;
+
       const storedPeriodo = window.localStorage.getItem(STORAGE_PERIODO);
       const periodo =
         storedPeriodo && PERIODOS_VALIDOS.includes(storedPeriodo as PeriodoId)
           ? (storedPeriodo as PeriodoId)
           : ("ultimo_mes" as PeriodoId);
       return {
-        empresa,
+        empresas,
         periodo,
         customFrom: window.localStorage.getItem(STORAGE_CUSTOM_FROM) ?? "",
         customTo: window.localStorage.getItem(STORAGE_CUSTOM_TO) ?? "",
       };
     } catch {
       return {
-        empresa: EMPRESAS[0]?.value ?? "",
+        empresas: fallbackEmpresas,
         periodo: "ultimo_mes" as PeriodoId,
         customFrom: "",
         customTo: "",
@@ -166,22 +216,29 @@ export function DashboardShell() {
   }, []);
 
   // Filters
-  const [empresa, setEmpresa] = useState(persistedFilters.empresa);
+  const [empresas, setEmpresas] = useState<string[]>(persistedFilters.empresas);
   const [periodo, setPeriodo] = useState<PeriodoId>(persistedFilters.periodo);
   const [customFrom, setCustomFrom] = useState(persistedFilters.customFrom);
   const [customTo, setCustomTo] = useState(persistedFilters.customTo);
   const comercialName = session?.user?.name?.trim() ?? "";
 
+  const empresasEfetivas = useMemo(() => {
+    const allowedSet = new Set(EMPRESAS.map((opt) => opt.value));
+    const filtered = empresas.filter((v) => allowedSet.has(v));
+    if (filtered.length > 0) return filtered;
+    return EMPRESAS[0]?.value ? [EMPRESAS[0].value] : [];
+  }, [empresas]);
+
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_EMPRESA, empresa);
+      writeEmpresasCookie(empresasEfetivas);
       window.localStorage.setItem(STORAGE_PERIODO, periodo);
       window.localStorage.setItem(STORAGE_CUSTOM_FROM, customFrom);
       window.localStorage.setItem(STORAGE_CUSTOM_TO, customTo);
     } catch {
       // ignore
     }
-  }, [empresa, periodo, customFrom, customTo]);
+  }, [empresasEfetivas, periodo, customFrom, customTo]);
 
   // Navigation
   const [activeTab, setActiveTab] = useState<TabId>("resumo");
@@ -228,38 +285,49 @@ export function DashboardShell() {
     [mounted, periodo, customFrom, customTo],
   );
 
-  const empresaLabel = useMemo(
-    () => EMPRESAS.find((e) => e.value === empresa)?.label ?? "",
-    [empresa],
+  const empresasNomes = useMemo<string[]>(
+    () =>
+      empresasEfetivas.map((v) => VALUE_TO_NOME.get(v) ?? "").filter((s) => s.trim().length > 0),
+    [empresasEfetivas],
   );
-  const empresaNomeSelecionado = useMemo(
-    () => empreendimentoNomeFromHeaderLabel(empresaLabel),
-    [empresaLabel],
+
+  const empresasCodigos = useMemo<string[]>(
+    () => empresasEfetivas.filter((v) => empresaTemIdNumerico(v)),
+    [empresasEfetivas],
   );
-  // O backend do stand-check exige empreendimento_id (int64 > 0). O `empresa`
-  // selecionado é o `codigo_interno_do_empreendimento` em string; a maioria
-  // é numérica, mas alguns rows do JSON vêm sem código (value
-  // "sem-codigo-...") — nesses casos passamos null e o CheckTab bloqueia
-  // a chamada em vez de mandar payload inválido.
-  const empreendimentoId = useMemo<number | null>(() => {
-    if (!empresa || empresa.startsWith("sem-codigo-")) return null;
-    const n = Number.parseInt(empresa, 10);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }, [empresa]);
+
+  // O backend do stand-check exige empreendimento_id (int64 > 0). O catálogo
+  // contém alguns rows sem código (value "sem-codigo-...") — esses ficam
+  // fora desta lista.
+  const empreendimentoIds = useMemo<number[]>(
+    () =>
+      empresasCodigos.map((s) => Number.parseInt(s, 10)).filter((n) => Number.isFinite(n) && n > 0),
+    [empresasCodigos],
+  );
+
+  // Empresa "primária" para endpoints que ainda são single-empreendimento
+  // (conversao-historica).
+  const empresaPrimaria = empresasEfetivas[0] ?? "";
+  const empresaPrimariaNome = empresasNomes[0] ?? "";
+
   const periodBounds = useMemo(
     () => computePeriodBounds(periodo, customFrom, customTo),
     [periodo, customFrom, customTo],
   );
 
+  // Keys evitam re-render loops quando arrays trocam de identidade sem mudar conteúdo.
+  const empresasNomesKey = empresasNomes.join("||");
+  const empresasCodigosKey = empresasCodigos.join(",");
+
   useEffect(() => {
-    if (!empresaNomeSelecionado || !periodBounds) return;
+    if (empresasNomes.length === 0 || !periodBounds) return;
     const ac = new AbortController();
     void (async () => {
       try {
         setFunnelLoading(true);
         const params = new URLSearchParams({
-          codigo: empresa.startsWith("sem-codigo-") ? "" : empresa,
-          nome: empresaNomeSelecionado,
+          codigos: empresasCodigos.join(","),
+          nomes: empresasNomes.join("||"),
           from: periodBounds.from,
           to: periodBounds.to,
         });
@@ -267,7 +335,11 @@ export function DashboardShell() {
           signal: ac.signal,
           cache: "no-store",
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          const body = await res.text().catch(() => "<no body>");
+          console.error("[funil] non-OK", { status: res.status, body, url: params.toString() });
+          return;
+        }
         const data = (await res.json()) as {
           leads?: number;
           visitas?: number;
@@ -276,6 +348,7 @@ export function DashboardShell() {
           ticketMedio?: number;
           vgvPeriodo?: number;
         };
+        console.error("[funil] client received", { url: params.toString(), data });
         if (ac.signal.aborted) return;
         setReal((prev) => ({
           ...prev,
@@ -296,14 +369,15 @@ export function DashboardShell() {
       }
     })();
     return () => ac.abort(new DOMException("Superseded by newer funnel request", "AbortError"));
-  }, [empresa, empresaNomeSelecionado, periodBounds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresasNomesKey, empresasCodigosKey, periodBounds]);
 
   useEffect(() => {
     const ac = new AbortController();
 
     void (async () => {
       if (ac.signal.aborted) return;
-      if (!empresaNomeSelecionado.trim() || !periodBounds) {
+      if (empresasNomes.length === 0 || !periodBounds) {
         setPastasKpis(null);
         setPastasError(null);
         setPastasLoading(false);
@@ -317,7 +391,8 @@ export function DashboardShell() {
 
       try {
         const params = new URLSearchParams({
-          nome: empresaNomeSelecionado,
+          nomes: empresasNomes.join("||"),
+          codigos: empresasCodigos.join(","),
           from: periodBounds.from,
           to: periodBounds.to,
         });
@@ -328,6 +403,11 @@ export function DashboardShell() {
         if (ac.signal.aborted) return;
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          console.error("[pastas] non-OK", {
+            status: res.status,
+            body,
+            url: params.toString(),
+          });
           setPastasKpis(null);
           setPastasError(body?.error ?? "Não foi possível carregar os totais de pastas.");
           setReal((prev) => ({ ...prev, pastas: 0 }));
@@ -355,16 +435,18 @@ export function DashboardShell() {
     })();
 
     return () => ac.abort(new DOMException("Superseded by newer pastas request", "AbortError"));
-  }, [empresaNomeSelecionado, periodBounds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresasNomesKey, empresasCodigosKey, periodBounds]);
 
+  // conversao-historica: endpoint single-empreendimento. Usa o primeiro selecionado.
   useEffect(() => {
-    if (!empresaNomeSelecionado) return;
+    if (!empresaPrimariaNome) return;
     const ac = new AbortController();
     void (async () => {
       try {
         const params = new URLSearchParams({
-          codigo: empresa.startsWith("sem-codigo-") ? "" : empresa,
-          nome: empresaNomeSelecionado,
+          codigo: empresaPrimaria.startsWith("sem-codigo-") ? "" : empresaPrimaria,
+          nome: empresaPrimariaNome,
         });
         const res = await fetch(`/api/dashboard/conversao-historica?${params.toString()}`, {
           signal: ac.signal,
@@ -382,16 +464,20 @@ export function DashboardShell() {
     })();
     return () =>
       ac.abort(new DOMException("Superseded by newer conversão-histórica request", "AbortError"));
-  }, [empresa, empresaNomeSelecionado]);
+  }, [empresaPrimaria, empresaPrimariaNome]);
+
+  // Sufixo passado pra `key=` em tabs com fetches dependentes do filtro,
+  // garantindo remount limpo quando a seleção muda.
+  const empresasKey = empresasEfetivas.join("|");
 
   return (
     <div className="app">
       <div className="shell">
         <div className="dash-head">
           <Topbar
-            empresa={empresa}
+            empresas={empresasEfetivas}
             empresaOptions={EMPRESAS}
-            onEmpresaChange={setEmpresa}
+            onEmpresasChange={setEmpresas}
             periodo={periodo}
             onPeriodoChange={setPeriodo}
             customFrom={customFrom}
@@ -412,11 +498,6 @@ export function DashboardShell() {
         <TabsNav active={activeTab} onSelect={setActiveTab} />
 
         <div className="tc" data-active={activeTab === "resumo"}>
-          {/* <HistoricConversionCard
-            key={empresa}
-            codigoInterno={empresa}
-            nomeSelecionado={empresaLabel}
-          /> */}
           <CascadeCard
             semana={semana}
             meta={meta}
@@ -431,22 +512,24 @@ export function DashboardShell() {
             performance={performance}
             loading={funnelLoading}
           />
-          <RankingSkinsSection semana={semana} empreendimentoId={empreendimentoId} />
+          <RankingSkinsSection semana={semana} empreendimentoIds={empreendimentoIds} />
           <RegrasOuroCard />
         </div>
 
         <div className="tc" data-active={activeTab === "checklist"}>
-          <CheckTab comercialName={comercialName} empreendimentoId={empreendimentoId} />
+          <CheckTab comercialName={comercialName} empreendimentoIds={empreendimentoIds} />
         </div>
 
         <div className="tc" data-active={activeTab === "recep"}>
-          <RecepTab empreendimentoNome={empresaNomeSelecionado} />
+          <RecepTab key={empresasKey} empreendimentosNomes={empresasNomes} />
         </div>
 
         <div className="tc" data-active={activeTab === "pastas"}>
           <PastasTab
-            semNome={!empresaNomeSelecionado.trim()}
-            empresaNome={empresaNomeSelecionado}
+            key={empresasKey}
+            semNome={empresasNomes.length === 0}
+            empresasNomes={empresasNomes}
+            empresasCodigos={empresasCodigos}
             periodBounds={periodBounds}
             loading={pastasLoading}
             error={pastasError}
@@ -458,7 +541,7 @@ export function DashboardShell() {
           <ArsenalTab
             semana={semana}
             onSemanaChange={setSemana}
-            empreendimentoId={empreendimentoId}
+            empreendimentoIds={empreendimentoIds}
           />
         </div>
 
@@ -466,7 +549,7 @@ export function DashboardShell() {
           <OutboundTab
             semana={semana}
             onSemanaChange={setSemana}
-            empreendimentoId={empreendimentoId}
+            empreendimentoIds={empreendimentoIds}
           />
         </div>
 
