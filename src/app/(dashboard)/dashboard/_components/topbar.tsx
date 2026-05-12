@@ -88,7 +88,7 @@ export function Topbar({
             </div>
             <div>
               <div className="brand-title">Painel do Comercial</div>
-              <div className="brand-sub">JERÔNIMO DA VEIGA · JVENDAS</div>
+              <div className="brand-sub">JERÔNIMO DA VEIGA</div>
             </div>
           </div>
 

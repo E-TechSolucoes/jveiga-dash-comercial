@@ -30,7 +30,7 @@ import type {
 } from "./types";
 
 type EmpreendimentoRow = {
-  codigo_interno_do_empreendimento: string | null;
+  idempreendimento: number;
   empreendimento: string;
 };
 
@@ -58,7 +58,7 @@ function foldName(value: string): string {
 }
 
 const EMPRESAS: EmpresaOption[] = (empreendimentosData as EmpreendimentoRow[]).map((row) => {
-  const codigo = row.codigo_interno_do_empreendimento ?? "";
+  const codigo = Number.isFinite(row.idempreendimento) ? String(row.idempreendimento) : "";
   return {
     value: codigo || `sem-codigo-${slugify(row.empreendimento)}`,
     label: codigo ? `${codigo} - ${row.empreendimento}` : row.empreendimento,
@@ -93,8 +93,7 @@ function readEmpresasCookie(): string[] | null {
     if (!decoded) return null;
     const parsed = JSON.parse(decoded);
     if (Array.isArray(parsed)) {
-      const arr = parsed.filter((v): v is string => typeof v === "string");
-      return arr.length > 0 ? arr : null;
+      return parsed.filter((v): v is string => typeof v === "string");
     }
   } catch {
     // ignora cookie corrompido
@@ -190,17 +189,16 @@ export function DashboardShell() {
     }
     try {
       const validValues = new Set(EMPRESAS.map((e) => e.value));
-      let empresas: string[] | null = null;
+      let empresas: string[];
 
       const cookieValues = readEmpresasCookie();
-      if (cookieValues) {
+      if (cookieValues !== null) {
+        // honra o estado persistido — inclusive vazio, se o usuário desmarcou tudo.
         empresas = cookieValues.filter((v) => validValues.has(v));
-      }
-      if (!empresas || empresas.length === 0) {
+      } else {
         const legacy = window.localStorage.getItem(LEGACY_STORAGE_EMPRESA);
-        if (legacy && validValues.has(legacy)) empresas = [legacy];
+        empresas = legacy && validValues.has(legacy) ? [legacy] : fallbackEmpresas;
       }
-      if (!empresas || empresas.length === 0) empresas = fallbackEmpresas;
 
       const storedPeriodo = window.localStorage.getItem(STORAGE_PERIODO);
       const periodo =
@@ -232,9 +230,7 @@ export function DashboardShell() {
 
   const empresasEfetivas = useMemo(() => {
     const allowedSet = new Set(EMPRESAS.map((opt) => opt.value));
-    const filtered = empresas.filter((v) => allowedSet.has(v));
-    if (filtered.length > 0) return filtered;
-    return EMPRESAS[0]?.value ? [EMPRESAS[0].value] : [];
+    return empresas.filter((v) => allowedSet.has(v));
   }, [empresas]);
 
   useEffect(() => {
@@ -432,7 +428,20 @@ export function DashboardShell() {
   }, [empresasNomesKey, empresasCodigosKey]);
 
   useEffect(() => {
-    if (empresasNomes.length === 0 || !periodBounds) return;
+    if (empresasNomes.length === 0 || !periodBounds) {
+      queueMicrotask(() => {
+        setReal((prev) => ({
+          ...prev,
+          leads: 0,
+          visitas: 0,
+          vendas: 0,
+          vendasAcumuladoHistorico: 0,
+        }));
+        setPerformance((prev) => ({ ...prev, vgvMedio: 0, vgvPeriodo: 0 }));
+        setFunnelLoading(false);
+      });
+      return;
+    }
     const ac = new AbortController();
     void (async () => {
       try {
@@ -460,7 +469,6 @@ export function DashboardShell() {
           ticketMedio?: number;
           vgvPeriodo?: number;
         };
-        console.error("[funil] client received", { url: params.toString(), data });
         if (ac.signal.aborted) return;
         setReal((prev) => ({
           ...prev,

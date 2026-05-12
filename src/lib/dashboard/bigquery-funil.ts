@@ -6,6 +6,7 @@ const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
 const LEADS = `\`${PROJECT}.${DATASET}.Leads\``;
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
+const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
 const RESERVAS = `\`${PROJECT}.${DATASET}.Reservas\``;
 
 let client: BigQuery | null = null;
@@ -66,6 +67,20 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         REGEXP_REPLACE(NORMALIZE(UPPER(TRIM(IFNULL(s, ''))), NFD), r'\\pM', '')
       );
 
+      -- Vendas no período: data de corte exclusivamente coluna data_envio_sienge (Sienge/BQ).
+      CREATE TEMP FUNCTION data_envio_sienge_para_date(x ANY TYPE) AS (
+        DATE(
+          COALESCE(
+            SAFE_CAST(x AS DATETIME),
+            DATETIME(SAFE_CAST(x AS TIMESTAMP)),
+            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(x AS STRING)), '')), TIME(0, 0, 0))
+          )
+        )
+      );
+
       WITH params AS (
         SELECT
           @ids AS ids,
@@ -113,27 +128,41 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       ),
       visitas_count AS (
         SELECT COUNT(*) AS n
-        FROM ${VISITAS} v
+        FROM (
+          SELECT data, created_at_utc, empreendimento FROM ${VISITAS}
+          UNION ALL
+          SELECT data, created_at_utc, empreendimento FROM ${PUBLIC_VISITAS}
+        ) v
         CROSS JOIN params p
         WHERE DATE(
           COALESCE(
-            SAFE.PARSE_DATE('%m/%d/%Y', NULLIF(TRIM(v.data), '')),
+            -- dwh.Visitas grava data como MM/DD/YYYY (US, verificado vs
+            -- created_at_utc); dwh.public_visitas usa ISO. Ordem evita
+            -- falso-positivo do parser DMY em datas ambíguas (day <= 12).
+            SAFE.PARSE_DATE('%m/%d/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
+            SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             DATE(v.created_at_utc)
           )
         ) BETWEEN p.d_from AND p.d_to
-          AND (
-            SAFE_CAST(TRIM(CAST(v.empreendimento_id AS STRING)) AS INT64) IN UNNEST(p.ids)
-            OR fold(v.empreendimento) IN UNNEST(p.nomes_fold)
-          )
+          -- A subquery unificada não expõe empreendimento_id, então só
+          -- conseguimos casar por nome normalizado.
+          AND fold(v.empreendimento) IN UNNEST(p.nomes_fold)
       ),
       vendas_periodo AS (
         SELECT
-          DATETIME(r.data_envio_sienge) AS dt_envio,
+          COALESCE(
+            SAFE_CAST(r.data_envio_sienge AS DATETIME),
+            DATETIME(SAFE_CAST(r.data_envio_sienge AS TIMESTAMP)),
+            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')), TIME(0, 0, 0))
+          ) AS dt_envio,
           IFNULL(r.valor_do_contrato, 0) - IFNULL(r.unica_pos_obra_valor, 0) AS vgv_linha
         FROM ${RESERVAS} r
         CROSS JOIN params p
         WHERE r.data_envio_sienge IS NOT NULL
-          AND DATE(DATETIME(r.data_envio_sienge)) BETWEEN p.d_from AND p.d_to
+          AND data_envio_sienge_para_date(r.data_envio_sienge) BETWEEN p.d_from AND p.d_to
           AND (
             SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
             OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)

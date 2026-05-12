@@ -1,86 +1,23 @@
 [
-  {
-    "codigo_interno_do_empreendimento": "85",
-    "empreendimento": "CARIOCA PARK II"
-  },
-  {
-    "codigo_interno_do_empreendimento": "1",
-    "empreendimento": "CHARDONNAY"
-  },
-  {
-    "codigo_interno_do_empreendimento": "351",
-    "empreendimento": "CONCEITO CALIFORNIA"
-  },
-  {
-    "codigo_interno_do_empreendimento": "347",
-    "empreendimento": "CONCEITO POÁ"
-  },
-  {
-    "codigo_interno_do_empreendimento": "52",
-    "empreendimento": "CONCEITO RESIDENCIAL"
-  },
-  {
-    "codigo_interno_do_empreendimento": "392",
-    "empreendimento": "CONCEITO SUPER CALIFÓRNIA"
-  },
-  {
-    "codigo_interno_do_empreendimento": "66",
-    "empreendimento": "CONCEITO TABOAO"
-  },
-  {
-    "codigo_interno_do_empreendimento": "35",
-    "empreendimento": "DUO LONDON"
-  },
-  {
-    "codigo_interno_do_empreendimento": "354",
-    "empreendimento": "ESSENZA CONCEITO TABOÃO"
-  },
-  {
-    "codigo_interno_do_empreendimento": "34",
-    "empreendimento": "JARDINS NOVA IGUAÇU"
-  },
-  {
-    "codigo_interno_do_empreendimento": "13",
-    "empreendimento": "MONDO NAÇÕES"
-  },
-  {
-    "codigo_interno_do_empreendimento": "21",
-    "empreendimento": "PALAZZO DUCALE"
-  },
-  {
-    "codigo_interno_do_empreendimento": "14",
-    "empreendimento": "PRIMAVERA BELFORD ROXO I"
-  },
-  {
-    "codigo_interno_do_empreendimento": "15",
-    "empreendimento": "RESERVA BELFORD ROXO"
-  },
-  {
-    "codigo_interno_do_empreendimento": "59",
-    "empreendimento": "RESERVA CARIOCA PARK"
-  },
-  {
-    "codigo_interno_do_empreendimento": "84",
-    "empreendimento": "RESIDENCIAL ONDAS VERDES"
-  },
-  {
-    "codigo_interno_do_empreendimento": null,
-    "empreendimento": "Residencial Chácara Santa Helena"
-  },
-  {
-    "codigo_interno_do_empreendimento": "390",
-    "empreendimento": "SAMBA GRAJAU"
-  },
-  {
-    "codigo_interno_do_empreendimento": "362",
-    "empreendimento": "SIGNATURE CONCEITO TABOÃO"
-  },
-  {
-    "codigo_interno_do_empreendimento": "64",
-    "empreendimento": "VISTA CAUCAIA APARTAMENTOS - PINHEIRO ALTO"
-  },
-  {
-    "codigo_interno_do_empreendimento": "83",
-    "empreendimento": "VISTA CAUCAIA CASAS - PINHEIRO ALTO"
-  }
+  { "idempreendimento": 12, "empreendimento": "CARIOCA PARK II" },
+  { "idempreendimento": 8, "empreendimento": "CHARDONNAY" },
+  { "idempreendimento": 20, "empreendimento": "CONCEITO CALIFORNIA" },
+  { "idempreendimento": 18, "empreendimento": "CONCEITO POÁ" },
+  { "idempreendimento": 7, "empreendimento": "CONCEITO RESIDENCIAL" },
+  { "idempreendimento": 22, "empreendimento": "CONCEITO SUPER CALIFÓRNIA" },
+  { "idempreendimento": 16, "empreendimento": "CONCEITO TABOAO" },
+  { "idempreendimento": 13, "empreendimento": "DUO LONDON" },
+  { "idempreendimento": 19, "empreendimento": "ESSENZA CONCEITO TABOÃO" },
+  { "idempreendimento": 6, "empreendimento": "JARDINS NOVA IGUAÇU" },
+  { "idempreendimento": 2, "empreendimento": "MONDO NAÇÕES" },
+  { "idempreendimento": 5, "empreendimento": "PALAZZO DUCALE" },
+  { "idempreendimento": 4, "empreendimento": "PRIMAVERA BELFORD ROXO I" },
+  { "idempreendimento": 3, "empreendimento": "RESERVA BELFORD ROXO" },
+  { "idempreendimento": 15, "empreendimento": "RESERVA CARIOCA PARK" },
+  { "idempreendimento": 14, "empreendimento": "RESIDENCIAL ONDAS VERDES" },
+  { "idempreendimento": 9, "empreendimento": "Residencial Chácara Santa Helena" },
+  { "idempreendimento": 21, "empreendimento": "SAMBA GRAJAU" },
+  { "idempreendimento": 23, "empreendimento": "SIGNATURE CONCEITO TABOÃO" },
+  { "idempreendimento": 10, "empreendimento": "VISTA CAUCAIA APARTAMENTOS - PINHEIRO ALTO" },
+  { "idempreendimento": 11, "empreendimento": "VISTA CAUCAIA CASAS - PINHEIRO ALTO" }
 ]

@@ -2,12 +2,39 @@ import path from "node:path";
 
 import { BigQuery } from "@google-cloud/bigquery";
 
+import empreendimentosCatalog from "../../../empreendimentos.json";
+
 import type { EmpreendimentoRef } from "./empreendimento-match";
 import { foldEmpreendimentoNome, resolveEmpreendimentoFromRows } from "./empreendimento-match";
+
+type EmpreendimentoCatalogRow = { idempreendimento: number; empreendimento: string };
+
+/** Nomes e ids do painel (topbar); prioridade no match para não depender do ANY_VALUE do DW. */
+const RECEP_CATALOG_REFS: EmpreendimentoRef[] = (
+  empreendimentosCatalog as EmpreendimentoCatalogRow[]
+)
+  .filter(
+    (r) =>
+      typeof r.idempreendimento === "number" &&
+      Number.isFinite(r.idempreendimento) &&
+      r.idempreendimento > 0,
+  )
+  .map((r) => ({ id: r.idempreendimento, nome: String(r.empreendimento ?? "") }));
+
+function mergeCatalogAndBqRefs(
+  catalog: EmpreendimentoRef[],
+  bq: EmpreendimentoRef[],
+): EmpreendimentoRef[] {
+  const catalogIds = new Set(catalog.map((c) => c.id));
+  const onlyBq = bq.filter((r) => !catalogIds.has(r.id));
+  return [...catalog, ...onlyBq];
+}
 
 const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
+/** Mesmo esquema que Visitas; fonte adicional agregada na Recepção. */
+const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
 const PLANTAO = `\`${PROJECT}.${DATASET}.Plantao\``;
 
 let client: BigQuery | null = null;
@@ -36,8 +63,15 @@ async function loadVisitasEmpreendimentos(): Promise<VisitasEmpRow[]> {
   const [rows] = await bq.query({
     query: `
       SELECT empreendimento_id, ANY_VALUE(empreendimento) AS empreendimento
-      FROM ${VISITAS}
-      WHERE empreendimento_id IS NOT NULL
+      FROM (
+        SELECT empreendimento_id, empreendimento
+        FROM ${VISITAS}
+        WHERE empreendimento_id IS NOT NULL
+        UNION ALL
+        SELECT empreendimento_id, empreendimento
+        FROM ${PUBLIC_VISITAS}
+        WHERE empreendimento_id IS NOT NULL
+      )
       GROUP BY empreendimento_id
     `,
   });
@@ -88,18 +122,17 @@ export type RecepPayload = {
   totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
 };
 
-function todayDataBr(): string {
-  const fmt = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const parts = fmt.formatToParts(new Date());
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-  return `${d}/${m}/${y}`;
+/** Data civil da visita (fuso São Paulo): BR, ISO, prefixo ISO em datetime, TIMESTAMP nativo, fallback created_at. */
+function sqlVisitaDateSaoPaulo(dataCol: string, createdCol: string): string {
+  const d = dataCol;
+  const s = `NULLIF(TRIM(CAST(${d} AS STRING)), '')`;
+  return `COALESCE(
+    SAFE.PARSE_DATE('%d/%m/%Y', ${s}),
+    SAFE.PARSE_DATE('%Y-%m-%d', ${s}),
+    SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(SUBSTR(${s}, 1, 10)), '')),
+    DATE(SAFE_CAST(${d} AS TIMESTAMP), 'America/Sao_Paulo'),
+    DATE(${createdCol}, 'America/Sao_Paulo')
+  )`;
 }
 
 export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<RecepPayload> {
@@ -107,10 +140,11 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
   const bq = getBigQuery();
   const trimmedAll = nomesSelecionados.map((n) => n.trim()).filter((n) => n.length > 0);
   const visitasEmpRows = await loadVisitasEmpreendimentos();
-  const refs: EmpreendimentoRef[] = visitasEmpRows.map((r) => ({
+  const bqRefs: EmpreendimentoRef[] = visitasEmpRows.map((r) => ({
     id: r.empreendimento_id,
     nome: r.empreendimento ?? "",
   }));
+  const refs = mergeCatalogAndBqRefs(RECEP_CATALOG_REFS, bqRefs);
 
   const matchedMap = new Map<number, RecepEmpreendimentoMatched>();
   for (const trimmed of trimmedAll) {
@@ -126,7 +160,6 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
   const empreendimentoId = matched[0]?.id ?? null;
   const empreendimentoNomeMatch = matched[0]?.nome ?? null;
   const nomeSelecionado = trimmedAll[0] ?? "";
-  const todayStr = todayDataBr();
 
   const empty: RecepPayload = {
     empreendimentoId,
@@ -162,28 +195,50 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
 
   const idsParam = ids;
 
+  const visitaDiaV = sqlVisitaDateSaoPaulo("v.data", "v.created_at_utc");
   const [visitasHojeRaw] = await bq.query({
     query: `
       SELECT hora, nome AS cliente, origem, corretor
-      FROM ${VISITAS}
-      WHERE empreendimento_id IN UNNEST(@ids)
-        AND data = @hoje
-      ORDER BY hora
+      FROM (
+        SELECT hora, nome, origem, corretor, empreendimento_id, data, created_at_utc
+        FROM ${VISITAS}
+        UNION ALL
+        SELECT hora, nome, origem, corretor, empreendimento_id, data, created_at_utc
+        FROM ${PUBLIC_VISITAS}
+      ) v
+      WHERE v.empreendimento_id IN UNNEST(@ids)
+        AND ${visitaDiaV} = CURRENT_DATE('America/Sao_Paulo')
+      ORDER BY CAST(v.hora AS STRING)
     `,
-    params: { ids: idsParam, hoje: todayStr },
-    types: { ids: ["INT64"], hoje: "STRING" },
+    params: { ids: idsParam },
+    types: { ids: ["INT64"] },
   });
   const visitasHoje = visitasHojeRaw as RecepVisitaRow[];
 
   const [histRowsRaw] = await bq.query({
     query: `
-      WITH parsed AS (
-        SELECT
-          SAFE.PARSE_DATE('%d/%m/%Y', data) AS d,
-          LOWER(TRIM(IFNULL(turno, ''))) AS turno_lc
+      WITH base_visitas AS (
+        SELECT data, turno, empreendimento_id, created_at_utc
         FROM ${VISITAS}
         WHERE empreendimento_id IN UNNEST(@ids)
-          AND data IS NOT NULL
+          AND (
+            data IS NOT NULL
+            OR created_at_utc IS NOT NULL
+          )
+        UNION ALL
+        SELECT data, turno, empreendimento_id, created_at_utc
+        FROM ${PUBLIC_VISITAS}
+        WHERE empreendimento_id IN UNNEST(@ids)
+          AND (
+            data IS NOT NULL
+            OR created_at_utc IS NOT NULL
+          )
+      ),
+      parsed AS (
+        SELECT
+          ${sqlVisitaDateSaoPaulo("data", "created_at_utc")} AS d,
+          LOWER(TRIM(IFNULL(turno, ''))) AS turno_lc
+        FROM base_visitas
       ),
       filtered AS (
         SELECT d, turno_lc

@@ -333,7 +333,9 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
               <History size={18} strokeWidth={2} /> Histórico — últimos dias
             </h2>
             <p className="data-card-sub">
-              Agregado por dia (turnos manhã/tarde conforme campo `turno` em Visitas).
+              Agregado por dia (turnos manhã/tarde conforme campo `turno`; fontes{" "}
+              <code className="text-xs">Visitas</code> ∪{" "}
+              <code className="text-xs">public_visitas</code>).
             </p>
           </div>
           <div className="sh-meta">
@@ -388,7 +390,7 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
             </>
           ) : null}
           {data?.empreendimentoId == null && nomesNorm.length > 0 && (
-            <> — sem correspondência na tabela Visitas (plantão filtrado só por nome).</>
+            <> — sem correspondência nas tabelas de visitas (plantão filtrado só por nome).</>
           )}
         </div>
       </div>
@@ -454,7 +456,9 @@ function RecepSkeleton() {
               <History size={18} strokeWidth={2} /> Histórico — últimos dias
             </h2>
             <p className="data-card-sub">
-              Agregado por dia (turnos manhã/tarde conforme campo `turno` em Visitas).
+              Agregado por dia (turnos manhã/tarde conforme campo `turno`; fontes{" "}
+              <code className="text-xs">Visitas</code> ∪{" "}
+              <code className="text-xs">public_visitas</code>).
             </p>
           </div>
         </header>
