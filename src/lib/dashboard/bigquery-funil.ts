@@ -136,11 +136,16 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         CROSS JOIN params p
         WHERE DATE(
           COALESCE(
-            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
+            -- dwh.Visitas grava data como MM/DD/YYYY (US, verificado vs
+            -- created_at_utc); dwh.public_visitas usa ISO. Ordem evita
+            -- falso-positivo do parser DMY em datas ambíguas (day <= 12).
+            SAFE.PARSE_DATE('%m/%d/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             DATE(v.created_at_utc)
           )
         ) BETWEEN p.d_from AND p.d_to
+          -- A subquery unificada não expõe empreendimento_id, então só
+          -- conseguimos casar por nome normalizado.
           AND fold(v.empreendimento) IN UNNEST(p.nomes_fold)
       ),
       vendas_periodo AS (

@@ -957,6 +957,10 @@ body {
   gap: 18px;
   flex-wrap: wrap;
   margin-bottom: 20px;
+  /* Sobrepõe a regra `.cascade > *` (z-index: 1) pra que o popover de meta
+     vença o `.cascade-row` irmão, que tinha empate de z-index e ganhava por
+     ordem do documento. */
+  z-index: 2;
 }
 .cascade-title {
   display: inline-flex;
@@ -993,6 +997,9 @@ body {
   padding: 6px 8px 6px 14px;
 }
 .meta-edit label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--ink-mute);
   font-weight: 500;
@@ -1226,6 +1233,97 @@ body {
 }
 .cascade-insight svg {
   flex-shrink: 0;
+}
+
+.meta-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: help;
+  border-radius: 999px;
+}
+.meta-info:hover,
+.meta-info:focus-visible {
+  color: var(--blue-700);
+  outline: none;
+}
+.meta-info:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.meta-info-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1000;
+  display: none;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  white-space: normal;
+  cursor: default;
+}
+.meta-info:hover .meta-info-pop,
+.meta-info:focus-within .meta-info-pop {
+  display: block;
+}
+.meta-info-pop-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.meta-info-pop ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meta-info-pop li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.meta-info-pop li span:first-child {
+  color: var(--ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-info-pop li span:last-child {
+  color: var(--blue-700);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.meta-info-pop-total {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 6px;
+  font-weight: 700;
+}
+.meta-info-pop-total span:first-child {
+  font-weight: 700 !important;
 }
 
 /* ============= HERO KPI (Vendas) ============= */

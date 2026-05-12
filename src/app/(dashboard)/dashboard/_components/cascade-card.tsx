@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FolderOpen,
   Home,
+  Info,
   Radio,
   ShieldAlert,
   Target,
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 
 import {
-  computeCascade,
+  computeCascadeRemaining,
   fmt,
   pct,
   stageStatus,
@@ -23,13 +24,19 @@ import {
   type Taxas,
 } from "./types";
 
+export type GoalBreakdownEntry = {
+  id: number;
+  name: string;
+  value: number;
+};
+
 type Props = {
   semana: number;
   meta: number;
   onMetaChange: (v: number) => void;
   taxas: Taxas;
   real: FunnelNumbers;
-  leadsHistoricoMensalMeta?: number;
+  goalsBreakdown?: GoalBreakdownEntry[];
 };
 
 type StageDef = {
@@ -38,26 +45,12 @@ type StageDef = {
   Icon: LucideIcon;
   real: number;
   target: number;
-  /** Vendas: período / total histórico — barra e status como % do histórico no período. */
-  vendasHistorico?: boolean;
 };
 
-function Stage({ label, Icon, real, target, vendasHistorico }: Omit<StageDef, "key">) {
-  const progress = vendasHistorico
-    ? target > 0
-      ? Math.min(100, Math.round((real / target) * 100))
-      : 0
-    : Math.min(100, pct(real, target));
-  const status: StageStatus = vendasHistorico
-    ? target <= 0
-      ? "ok"
-      : progress >= 80
-        ? "ok"
-        : progress >= 50
-          ? "warn"
-          : "bad"
-    : stageStatus(real, target);
-  const hit = vendasHistorico ? target > 0 && progress >= 100 : real >= target;
+function Stage({ label, Icon, real, target }: Omit<StageDef, "key">) {
+  const progress = Math.min(100, pct(real, target));
+  const status: StageStatus = stageStatus(real, target);
+  const hit = real >= target;
   return (
     <div className="stage" data-st={status}>
       <div className="stage-head">
@@ -69,25 +62,13 @@ function Stage({ label, Icon, real, target, vendasHistorico }: Omit<StageDef, "k
       <div className="stage-lbl">{label}</div>
       <div className="stage-vals">
         <span className="stage-real">{fmt(real)}</span>
-        <span className="stage-target">/ {vendasHistorico && target <= 0 ? "—" : fmt(target)}</span>
+        <span className="stage-target">/ {fmt(target)}</span>
       </div>
       <div className="stage-bar" aria-hidden>
         <span style={{ width: `${progress}%` }} />
       </div>
       <div className="stage-status">
-        {vendasHistorico ? (
-          <>
-            {target <= 0 ? (
-              <>Sem vendas no histórico</>
-            ) : hit ? (
-              <>
-                <CheckCircle2 size={13} strokeWidth={2.25} /> 100% do histórico no período
-              </>
-            ) : (
-              <>{progress}% do histórico no período</>
-            )}
-          </>
-        ) : hit ? (
+        {hit ? (
           <>
             <CheckCircle2 size={13} strokeWidth={2.25} /> Bateu
           </>
@@ -99,36 +80,28 @@ function Stage({ label, Icon, real, target, vendasHistorico }: Omit<StageDef, "k
   );
 }
 
-export function CascadeCard({
-  semana,
-  meta,
-  onMetaChange,
-  taxas,
-  real,
-  leadsHistoricoMensalMeta,
-}: Props) {
-  const target = computeCascade(meta, taxas);
-  const leadsTarget = Math.max(1, Math.round(leadsHistoricoMensalMeta ?? target.leads));
-
-  const vendasHistoricoTotal = Math.max(0, Math.round(real.vendasAcumuladoHistorico ?? 0));
-  const vendasTargetDisplay = vendasHistoricoTotal;
+export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBreakdown }: Props) {
+  const breakdown = goalsBreakdown ?? [];
+  const showBreakdown = breakdown.length > 1;
+  const breakdownTotal = breakdown.reduce((sum, g) => sum + g.value, 0);
+  const targets = computeCascadeRemaining({
+    meta,
+    taxas,
+    vendasRealizadas: real.vendas,
+    real: { leads: real.leads, visitas: real.visitas, pastas: real.pastas },
+  });
 
   const stages: StageDef[] = [
-    { key: "leads", label: "Leads", Icon: Radio, real: real.leads, target: leadsTarget },
-    { key: "visitas", label: "Visitas", Icon: Home, real: real.visitas, target: target.visitas },
-    { key: "pastas", label: "Pastas", Icon: FolderOpen, real: real.pastas, target: target.pastas },
-    {
-      key: "vendas",
-      label: "Vendas",
-      Icon: Trophy,
-      real: real.vendas,
-      target: vendasTargetDisplay,
-      vendasHistorico: true,
-    },
+    { key: "leads", label: "Leads", Icon: Radio, real: real.leads, target: targets.leads },
+    { key: "visitas", label: "Visitas", Icon: Home, real: real.visitas, target: targets.visitas },
+    { key: "pastas", label: "Pastas", Icon: FolderOpen, real: real.pastas, target: targets.pastas },
+    { key: "vendas", label: "Vendas", Icon: Trophy, real: real.vendas, target: meta },
   ];
 
+  // "worst" diagnostica gargalo no funil de pré-venda; exclui Vendas para não
+  // duplicar a mensagem de "Meta atingida".
   const worst = stages
-    .filter((s) => !s.vendasHistorico)
+    .filter((s) => s.key !== "vendas")
     .reduce((w, s) => (pct(s.real, s.target) < pct(w.real, w.target) ? s : w));
   const worstPct = pct(worst.real, worst.target);
 
@@ -136,7 +109,9 @@ export function CascadeCard({
   let InsightIcon: LucideIcon = CheckCircle2;
   let insightText: React.ReactNode = "Funil saudável — todos os estágios no rumo da meta";
 
-  if (worstPct < 50) {
+  if (targets.metaAtingida) {
+    insightText = "Meta de vendas atingida — pipeline coberto";
+  } else if (worstPct < 50) {
     insightStatus = "bad";
     InsightIcon = AlertOctagon;
     insightText = (
@@ -172,7 +147,29 @@ export function CascadeCard({
           </div>
         </div>
         <div className="meta-edit">
-          <label htmlFor="meta-vendas">Meta de vendas</label>
+          <label htmlFor="meta-vendas">
+            Meta de vendas
+            {showBreakdown && (
+              <button type="button" className="meta-info" aria-label="Detalhes da meta">
+                <Info size={14} strokeWidth={2} aria-hidden />
+                <span className="meta-info-pop" role="tooltip">
+                  <span className="meta-info-pop-title">Meta por empreendimento</span>
+                  <ul>
+                    {breakdown.map((g) => (
+                      <li key={g.id}>
+                        <span>{g.name}</span>
+                        <span>{fmt(g.value)}</span>
+                      </li>
+                    ))}
+                    <li className="meta-info-pop-total">
+                      <span>Total</span>
+                      <span>{fmt(breakdownTotal)}</span>
+                    </li>
+                  </ul>
+                </span>
+              </button>
+            )}
+          </label>
           <input
             id="meta-vendas"
             type="number"
@@ -200,13 +197,7 @@ export function CascadeCard({
 function StepFragment({ stage, showArrow }: { stage: StageDef; showArrow: boolean }) {
   return (
     <>
-      <Stage
-        label={stage.label}
-        Icon={stage.Icon}
-        real={stage.real}
-        target={stage.target}
-        vendasHistorico={stage.vendasHistorico}
-      />
+      <Stage label={stage.label} Icon={stage.Icon} real={stage.real} target={stage.target} />
       {showArrow && (
         <div className="stage-arrow" aria-hidden>
           <ChevronRight size={20} strokeWidth={1.5} />
