@@ -25,6 +25,8 @@ export type OutboundLead = {
   id: string;
   week_start: string;
   action_id: string;
+  weekday?: number | null;
+  local?: string | null;
   name: string;
   phone: string;
   status: OutboundStatus;
@@ -34,8 +36,14 @@ export type OutboundLead = {
   updated_at: string;
 };
 
+export type OutboundExecutionRef = {
+  weekday: number;
+  local: string | null;
+};
+
 export type OutboundRoiRow = {
   action: FieldAction;
+  executions: OutboundExecutionRef[];
   cost_id: string | null;
   cost_planned: number;
   cost_real: number;
@@ -79,6 +87,8 @@ export type CreateLeadPayload = {
   empreendimento_id: number;
   week_start: string;
   action_id: string;
+  weekday?: number;
+  local?: string;
   name: string;
   phone: string;
 };
@@ -130,12 +140,16 @@ export function importLeadsSpreadsheet(args: {
   action_id: string;
   week_start: string;
   empreendimento_id: number;
+  weekday?: number;
+  local?: string;
 }): Promise<ImportLeadsResponse> {
   const fd = new FormData();
   fd.append("file", args.file);
   fd.append("action_id", args.action_id);
   fd.append("week_start", args.week_start);
   fd.append("empreendimento_id", String(args.empreendimento_id));
+  if (args.weekday != null) fd.append("weekday", String(args.weekday));
+  if (args.local) fd.append("local", args.local);
   return apiFetch<ImportLeadsResponse>(`${BASE}/leads/import`, {
     method: "POST",
     body: fd,

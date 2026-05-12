@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { fmt } from "./types";
+import { DIAS_SEMANA } from "./arsenal-data";
 import { Toast, type ToastKind } from "./toast";
 import {
   isApiError,
@@ -42,6 +43,27 @@ import {
 } from "@/lib/outbound/api";
 
 const TOAST_DURATION_MS = 3000;
+
+type SelectOpt = {
+  // Opaque value packed for the <option>; parsed back into (action_id, weekday, local)
+  // on submit. Local-as-empty-string maps to null on the wire.
+  value: string;
+  label: string;
+  action_id: string;
+  weekday: number;
+  local: string | null;
+};
+
+function parseSelectValue(
+  v: string,
+): { action_id: string; weekday: number; local: string | null } | null {
+  if (!v) return null;
+  const [actionId, weekdayRaw, ...localParts] = v.split("::");
+  const weekday = Number(weekdayRaw);
+  if (!actionId || !Number.isFinite(weekday)) return null;
+  const local = localParts.join("::"); // local may contain `::` even though we don't expect it
+  return { action_id: actionId, weekday, local: local === "" ? null : local };
+}
 
 type Props = {
   semana: number;
@@ -133,16 +155,40 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     [weekStart, empreendimentoId],
   );
 
-  // Action selects only show actions that had at least one validated
-  // execution in the selected week — server filters week.roi to that set.
-  const actions = useMemo<FieldAction[]>(
-    () =>
-      (week?.roi ?? [])
-        .map((r) => r.action)
-        .slice()
-        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
-    [week?.roi],
-  );
+  // actionsById is consumed by <LeadRow> only — it must include every action
+  // that appears in the table, including trainings, so legacy training leads
+  // still render readable chip labels.
+  const actionsById = useMemo<Map<string, FieldAction>>(() => {
+    const m = new Map<string, FieldAction>();
+    for (const r of week?.roi ?? []) m.set(r.action.id, r.action);
+    return m;
+  }, [week?.roi]);
+
+  // Selects show one option per validated execution (action × dia × cidade),
+  // and exclude trainings entirely — outbound only captures leads for field
+  // actions. Mirrors conhecimento-tab's a.type === "field_action" filter.
+  const selectableOptions = useMemo<SelectOpt[]>(() => {
+    const rows = (week?.roi ?? [])
+      .filter((r) => r.action.type === "field_action")
+      .slice()
+      .sort((a, b) => (a.action.display_order ?? 0) - (b.action.display_order ?? 0));
+    const out: SelectOpt[] = [];
+    for (const r of rows) {
+      const execs = [...(r.executions ?? [])].sort((a, b) => a.weekday - b.weekday);
+      for (const e of execs) {
+        const dia = DIAS_SEMANA[e.weekday - 1] ?? `dia ${e.weekday}`;
+        const localSuffix = e.local ? ` — ${e.local}` : "";
+        out.push({
+          value: `${r.action.id}::${e.weekday}::${e.local ?? ""}`,
+          label: `${r.action.nome} — ${dia}${localSuffix}`,
+          action_id: r.action.id,
+          weekday: e.weekday,
+          local: e.local,
+        });
+      }
+    }
+    return out;
+  }, [week?.roi]);
 
   useEffect(() => {
     if (!weekStart) return;
@@ -167,7 +213,8 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       showToast("error", "Preencha o nome do lead.");
       return;
     }
-    if (!novoAcao) {
+    const parsed = parseSelectValue(novoAcao);
+    if (!parsed) {
       showToast("error", "Selecione a ação para o lead.");
       return;
     }
@@ -176,7 +223,9 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       await createLead({
         empreendimento_id: empreendimentoId,
         week_start: weekStart,
-        action_id: novoAcao,
+        action_id: parsed.action_id,
+        weekday: parsed.weekday,
+        ...(parsed.local ? { local: parsed.local } : {}),
         name: novoNome.trim(),
         phone: novoTel.trim(),
       });
@@ -198,7 +247,8 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       showToast("error", "Selecione um empreendimento no topo.");
       return;
     }
-    if (!importAcao) {
+    const parsed = parseSelectValue(importAcao);
+    if (!parsed) {
       showToast("error", "Selecione a ação antes de enviar a planilha.");
       return;
     }
@@ -206,9 +256,11 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     try {
       const res = await importLeadsSpreadsheet({
         file,
-        action_id: importAcao,
+        action_id: parsed.action_id,
         week_start: weekStart,
         empreendimento_id: empreendimentoId,
+        weekday: parsed.weekday,
+        ...(parsed.local ? { local: parsed.local } : {}),
       });
       await loadWeek();
       const skippedNote = res.skipped > 0 ? ` (${res.skipped} ignorados sem nome)` : "";
@@ -464,12 +516,12 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
               className="field-input"
               value={importAcao}
               onChange={(e) => setImportAcao(e.target.value)}
-              disabled={importing || actions.length === 0}
+              disabled={importing || selectableOptions.length === 0}
             >
               <option value="">— Selecione a ação —</option>
-              {actions.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nome}
+              {selectableOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -525,12 +577,12 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
                 className="field-input"
                 value={novoAcao}
                 onChange={(e) => setNovoAcao(e.target.value)}
-                disabled={creating || actions.length === 0}
+                disabled={creating || selectableOptions.length === 0}
               >
                 <option value="">— Selecione —</option>
-                {actions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome}
+                {selectableOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </select>
@@ -600,7 +652,7 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
                   <LeadRow
                     key={l.id}
                     lead={l}
-                    actions={actions}
+                    actionsById={actionsById}
                     onStatusChange={updateStatus}
                     onValidate={validateOne}
                     onRemove={removeLead}
@@ -668,21 +720,23 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
 
 type LeadRowProps = {
   lead: OutboundLead;
-  actions: FieldAction[];
+  actionsById: Map<string, FieldAction>;
   onStatusChange: (id: string, status: OutboundStatus) => void;
   onValidate: (id: string) => void;
   onRemove: (id: string) => void;
 };
 
-function LeadRow({ lead, actions, onStatusChange, onValidate, onRemove }: LeadRowProps) {
-  const acao = actions.find((a) => a.id === lead.action_id)?.nome ?? "—";
+function LeadRow({ lead, actionsById, onStatusChange, onValidate, onRemove }: LeadRowProps) {
+  const nome = actionsById.get(lead.action_id)?.nome ?? "—";
+  const dia = lead.weekday ? DIAS_SEMANA[lead.weekday - 1] : null;
+  const chipParts = [nome, dia, lead.local].filter((v): v is string => Boolean(v));
   return (
     <tr>
       <td className="cell-strong">{lead.name}</td>
       <td className="cell-mute">{lead.phone || "—"}</td>
       <td>
         <span className="chip-soft" data-accent="amber">
-          {acao}
+          {chipParts.join(" — ")}
         </span>
       </td>
       <td>
