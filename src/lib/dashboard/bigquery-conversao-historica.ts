@@ -6,6 +6,7 @@ const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
 const LEADS = `\`${PROJECT}.${DATASET}.Leads\``;
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
+const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
 
 let client: BigQuery | null = null;
 
@@ -95,17 +96,23 @@ export async function fetchConversaoHistorica(
         SELECT
           DATE_TRUNC(
             COALESCE(
-              SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(v.data), '')),
+              SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
+              SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
               DATE(v.created_at_utc)
             ),
             MONTH
           ) AS mes_ref,
           COUNT(*) AS visitas
-        FROM ${VISITAS} v
+        FROM (
+          SELECT data, created_at_utc, empreendimento FROM ${VISITAS}
+          UNION ALL
+          SELECT data, created_at_utc, empreendimento FROM ${PUBLIC_VISITAS}
+        ) v
         CROSS JOIN params p
         WHERE fold(v.empreendimento) = p.nome_fold
           AND (
-            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(v.data), '')) IS NOT NULL
+            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')) IS NOT NULL
+            OR SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')) IS NOT NULL
             OR v.created_at_utc IS NOT NULL
           )
         GROUP BY mes_ref
@@ -168,7 +175,7 @@ export async function fetchConversaoHistorica(
             ? "Leads por nome normalizado do empreendimento; 1 lead por idlead no mês do primeiro cadastro."
             : `Leads por codigointerno_empreendimento = '${codigo}'; 1 lead por idlead no mês do primeiro cadastro.`,
         visitas:
-          "Visitas por nome normalizado do empreendimento; mês da visita em data (DD/MM/YYYY) com fallback created_at_utc.",
+          "Visitas em Visitas ∪ public_visitas; data em DD/MM/YYYY ou ISO (YYYY-MM-DD), com fallback created_at_utc.",
       },
       metricas: {
         taxa_conversao_mensal_pct: "visitas / leads * 100 no mês (NULL se leads=0).",

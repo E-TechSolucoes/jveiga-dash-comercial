@@ -6,6 +6,7 @@ const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
 const LEADS = `\`${PROJECT}.${DATASET}.Leads\``;
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
+const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
 const RESERVAS = `\`${PROJECT}.${DATASET}.Reservas\``;
 
 let client: BigQuery | null = null;
@@ -127,11 +128,16 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       ),
       visitas_count AS (
         SELECT COUNT(*) AS n
-        FROM ${VISITAS} v
+        FROM (
+          SELECT data, created_at_utc, empreendimento FROM ${VISITAS}
+          UNION ALL
+          SELECT data, created_at_utc, empreendimento FROM ${PUBLIC_VISITAS}
+        ) v
         CROSS JOIN params p
         WHERE DATE(
           COALESCE(
-            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(v.data), '')),
+            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
+            SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             DATE(v.created_at_utc)
           )
         ) BETWEEN p.d_from AND p.d_to
