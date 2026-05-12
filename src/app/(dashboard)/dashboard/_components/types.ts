@@ -56,4 +56,40 @@ export function computeCascade(meta: number, taxas: Taxas): FunnelNumbers {
   return { vendas: meta, pastas, visitas, leads };
 }
 
+export type CascadeContext = {
+  meta: number;
+  taxas: Taxas;
+  vendasRealizadas: number;
+  real: Pick<FunnelNumbers, "leads" | "visitas" | "pastas">;
+};
+
+export type CascadeTargets = {
+  leads: number;
+  visitas: number;
+  pastas: number;
+  remainingVendas: number;
+  metaAtingida: boolean;
+};
+
+function ceilSafe(numerator: number, rate: number): number {
+  return rate > 0 ? Math.ceil(numerator / rate) : 0;
+}
+
+export function computeCascadeRemaining(ctx: CascadeContext): CascadeTargets {
+  const remainingVendas = Math.max(0, ctx.meta - ctx.vendasRealizadas);
+  const metaAtingida = remainingVendas === 0;
+
+  const pastasNeeded = ceilSafe(remainingVendas, ctx.taxas.pv);
+  const visitasNeeded = ceilSafe(pastasNeeded, ctx.taxas.vp);
+  const leadsNeeded = ceilSafe(visitasNeeded, ctx.taxas.lv);
+
+  return {
+    pastas: ctx.real.pastas + pastasNeeded,
+    visitas: ctx.real.visitas + visitasNeeded,
+    leads: ctx.real.leads + leadsNeeded,
+    remainingVendas,
+    metaAtingida,
+  };
+}
+
 export const fmt = (n: number): string => (n ?? 0).toLocaleString("pt-BR");

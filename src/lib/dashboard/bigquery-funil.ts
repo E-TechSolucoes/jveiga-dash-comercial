@@ -117,11 +117,14 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         CROSS JOIN params p
         WHERE DATE(
           COALESCE(
-            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(v.data), '')),
+            SAFE.PARSE_DATE('%m/%d/%Y', NULLIF(TRIM(v.data), '')),
             DATE(v.created_at_utc)
           )
         ) BETWEEN p.d_from AND p.d_to
-          AND fold(v.empreendimento) IN UNNEST(p.nomes_fold)
+          AND (
+            SAFE_CAST(TRIM(CAST(v.empreendimento_id AS STRING)) AS INT64) IN UNNEST(p.ids)
+            OR fold(v.empreendimento) IN UNNEST(p.nomes_fold)
+          )
       ),
       vendas_periodo AS (
         SELECT

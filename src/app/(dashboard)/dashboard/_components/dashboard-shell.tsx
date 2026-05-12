@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { useAuth } from "@/lib/auth";
+import { apiFetch, useAuth } from "@/lib/auth";
+import type { SalesPlanByMonth } from "@/lib/dashboard/sales-plans";
 
 import empreendimentosData from "../../../../../empreendimentos.json";
 import { ArsenalTab } from "./arsenal-tab";
@@ -47,6 +48,13 @@ function slugify(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/** Match nomes do catálogo (com acento) com nomes do upstream (sem garantia de
+ * acento/case). Mesma normalização usada nos filtros do BigQuery em
+ * `bigquery-taxas.ts`. */
+function foldName(value: string): string {
+  return value.normalize("NFD").replaceAll(/\p{M}/gu, "").toUpperCase().trim();
 }
 
 const EMPRESAS: EmpresaOption[] = (empreendimentosData as EmpreendimentoRow[]).map((row) => {
@@ -243,9 +251,15 @@ export function DashboardShell() {
   // Navigation
   const [activeTab, setActiveTab] = useState<TabId>("resumo");
 
-  // Meta / Conversions (editable)
-  const [meta, setMeta] = useState(8);
-  const taxas: Taxas = { lv: 0.15, vp: 0.2, pv: 0.5 };
+  // Meta / Conversions. `meta` é derivada em render (ver bloco abaixo de
+  // `metaFromGoals`); só o override do usuário e o snapshot da seleção atual
+  // ficam em state.
+  const [metaUserOverride, setMetaUserOverride] = useState<number | null>(null);
+  const [salesPlan, setSalesPlan] = useState<SalesPlanByMonth | null>(null);
+  // Taxas históricas (visitas/leads, pastas/visitas, vendas/pastas) por empreendimento,
+  // vindas de /api/dashboard/taxas. Os valores iniciais cobrem o primeiro render
+  // até a primeira resposta — nunca devem ser exibidos como "real".
+  const [taxas, setTaxas] = useState<Taxas>({ lv: 0.15, vp: 0.2, pv: 0.5 });
 
   // Semana atual — compartilhada entre Resumo e Armas (arsenal)
   const [semana, setSemana] = useState(1);
@@ -261,7 +275,6 @@ export function DashboardShell() {
   const [pastasKpis, setPastasKpis] = useState<PastasKpis | null>(null);
   const [pastasLoading, setPastasLoading] = useState(false);
   const [pastasError, setPastasError] = useState<string | null>(null);
-  const [leadsHistoricoMensalMeta, setLeadsHistoricoMensalMeta] = useState(0);
   const [performance, setPerformance] = useState<PerformanceNumbers>({
     corretores: 24,
     vgvMedio: 0,
@@ -305,11 +318,6 @@ export function DashboardShell() {
     [empresasCodigos],
   );
 
-  // Empresa "primária" para endpoints que ainda são single-empreendimento
-  // (conversao-historica).
-  const empresaPrimaria = empresasEfetivas[0] ?? "";
-  const empresaPrimariaNome = empresasNomes[0] ?? "";
-
   const periodBounds = useMemo(
     () => computePeriodBounds(periodo, customFrom, customTo),
     [periodo, customFrom, customTo],
@@ -318,6 +326,110 @@ export function DashboardShell() {
   // Keys evitam re-render loops quando arrays trocam de identidade sem mudar conteúdo.
   const empresasNomesKey = empresasNomes.join("||");
   const empresasCodigosKey = empresasCodigos.join(",");
+  const empreendimentoIdsKey = empreendimentoIds.join(",");
+
+  // Snapshot da seleção do último commit — usado pra invalidar `metaUserOverride`
+  // quando a seleção muda (padrão render-phase, ver bloco após `metaFromGoals`).
+  const [prevSelectionKey, setPrevSelectionKey] = useState(empreendimentoIdsKey);
+
+  const currentMonthKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}`;
+  }, []);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const [yearStr, monthStr] = currentMonthKey.split("-");
+    const params = new URLSearchParams({ year: yearStr, month: monthStr });
+    void (async () => {
+      try {
+        const data = await apiFetch<SalesPlanByMonth>(
+          `/api/v1/sales-plans/by-month?${params.toString()}`,
+          { signal: ac.signal, cache: "no-store" },
+        );
+        if (ac.signal.aborted) return;
+        setSalesPlan(data);
+      } catch {
+        // aborted on unmount / month rollover, ou erro upstream — apiFetch já
+        // cuida de 401 redirecionando pra /login.
+        if (!ac.signal.aborted) setSalesPlan(null);
+      }
+    })();
+    return () =>
+      ac.abort(new DOMException("Superseded by newer sales-plans request", "AbortError"));
+  }, [currentMonthKey]);
+
+  const goalsBreakdown = useMemo(() => {
+    if (!salesPlan) return [];
+    // O `empreendimento_id` que o upstream devolve não bate com o
+    // `codigo_interno_do_empreendimento` do catálogo (Conceito Poá vira 18 lá e
+    // 347 aqui). Casamos por nome normalizado, que é estável em ambos.
+    const selected = new Set(empresasNomes.map(foldName));
+    return salesPlan.items
+      .filter((it) => selected.has(foldName(it.empreendimento_name)))
+      .map((it) => ({
+        id: it.empreendimento_id,
+        name: it.empreendimento_name,
+        value: it.planned_sales,
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesPlan, empresasNomesKey]);
+
+  const metaFromGoals = useMemo(
+    () => goalsBreakdown.reduce((sum, g) => sum + g.value, 0),
+    [goalsBreakdown],
+  );
+
+  // Sempre que a seleção muda, descartamos o override do usuário — a meta volta
+  // a ser dirigida pela API. Padrão render-phase do React (setState durante
+  // render é descartado e re-rendado imediatamente; sem ciclo de efeito):
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  if (empreendimentoIdsKey !== prevSelectionKey) {
+    setPrevSelectionKey(empreendimentoIdsKey);
+    setMetaUserOverride(null);
+  }
+  const meta = metaUserOverride ?? metaFromGoals;
+
+  const handleMetaChange = (v: number) => setMetaUserOverride(v);
+
+  // Taxas históricas (acumulado por empreendimento, sem filtro de data).
+  useEffect(() => {
+    if (empresasNomes.length === 0) return;
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          codigos: empresasCodigos.join(","),
+          nomes: empresasNomes.join("||"),
+        });
+        const res = await fetch(`/api/dashboard/taxas?${params.toString()}`, {
+          signal: ac.signal,
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "<no body>");
+          console.error("[taxas] non-OK", { status: res.status, body, url: params.toString() });
+          return;
+        }
+        const data = (await res.json()) as {
+          taxas?: { lv?: number; vp?: number; pv?: number };
+        };
+        if (ac.signal.aborted) return;
+        const t = data.taxas ?? {};
+        // Mantém o fallback corrente se a etapa anterior tiver zero histórico
+        // (taxa = 0 zera a cascata inteira via ceilSafe).
+        setTaxas((prev) => ({
+          lv: Number(t.lv) > 0 ? Number(t.lv) : prev.lv,
+          vp: Number(t.vp) > 0 ? Number(t.vp) : prev.vp,
+          pv: Number(t.pv) > 0 ? Number(t.pv) : prev.pv,
+        }));
+      } catch {
+        // aborted on selection change / unmount — ignore
+      }
+    })();
+    return () => ac.abort(new DOMException("Superseded by newer taxas request", "AbortError"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresasNomesKey, empresasCodigosKey]);
 
   useEffect(() => {
     if (empresasNomes.length === 0 || !periodBounds) return;
@@ -438,34 +550,6 @@ export function DashboardShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresasNomesKey, empresasCodigosKey, periodBounds]);
 
-  // conversao-historica: endpoint single-empreendimento. Usa o primeiro selecionado.
-  useEffect(() => {
-    if (!empresaPrimariaNome) return;
-    const ac = new AbortController();
-    void (async () => {
-      try {
-        const params = new URLSearchParams({
-          codigo: empresaPrimaria.startsWith("sem-codigo-") ? "" : empresaPrimaria,
-          nome: empresaPrimariaNome,
-        });
-        const res = await fetch(`/api/dashboard/conversao-historica?${params.toString()}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          meta?: { media_historica_mensal_leads?: number };
-        };
-        if (ac.signal.aborted) return;
-        setLeadsHistoricoMensalMeta(Number(data.meta?.media_historica_mensal_leads ?? 0));
-      } catch {
-        if (!ac.signal.aborted) setLeadsHistoricoMensalMeta(0);
-      }
-    })();
-    return () =>
-      ac.abort(new DOMException("Superseded by newer conversão-histórica request", "AbortError"));
-  }, [empresaPrimaria, empresaPrimariaNome]);
-
   // Sufixo passado pra `key=` em tabs com fetches dependentes do filtro,
   // garantindo remount limpo quando a seleção muda.
   const empresasKey = empresasEfetivas.join("|");
@@ -501,10 +585,10 @@ export function DashboardShell() {
           <CascadeCard
             semana={semana}
             meta={meta}
-            onMetaChange={setMeta}
+            onMetaChange={handleMetaChange}
             taxas={taxas}
             real={real}
-            leadsHistoricoMensalMeta={leadsHistoricoMensalMeta}
+            goalsBreakdown={goalsBreakdown}
           />
           <FunnelSection
             real={real}
