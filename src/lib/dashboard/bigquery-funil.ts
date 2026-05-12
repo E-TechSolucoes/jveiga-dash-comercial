@@ -66,6 +66,20 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         REGEXP_REPLACE(NORMALIZE(UPPER(TRIM(IFNULL(s, ''))), NFD), r'\\pM', '')
       );
 
+      -- Vendas no período: data de corte exclusivamente coluna data_envio_sienge (Sienge/BQ).
+      CREATE TEMP FUNCTION data_envio_sienge_para_date(x ANY TYPE) AS (
+        DATE(
+          COALESCE(
+            SAFE_CAST(x AS DATETIME),
+            DATETIME(SAFE_CAST(x AS TIMESTAMP)),
+            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
+            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(x AS STRING)), '')), TIME(0, 0, 0))
+          )
+        )
+      );
+
       WITH params AS (
         SELECT
           @ids AS ids,
@@ -125,12 +139,19 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       ),
       vendas_periodo AS (
         SELECT
-          DATETIME(r.data_envio_sienge) AS dt_envio,
+          COALESCE(
+            SAFE_CAST(r.data_envio_sienge AS DATETIME),
+            DATETIME(SAFE_CAST(r.data_envio_sienge AS TIMESTAMP)),
+            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
+            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')), TIME(0, 0, 0))
+          ) AS dt_envio,
           IFNULL(r.valor_do_contrato, 0) - IFNULL(r.unica_pos_obra_valor, 0) AS vgv_linha
         FROM ${RESERVAS} r
         CROSS JOIN params p
         WHERE r.data_envio_sienge IS NOT NULL
-          AND DATE(DATETIME(r.data_envio_sienge)) BETWEEN p.d_from AND p.d_to
+          AND data_envio_sienge_para_date(r.data_envio_sienge) BETWEEN p.d_from AND p.d_to
           AND (
             SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
             OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)

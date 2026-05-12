@@ -118,8 +118,6 @@ export function EmpreendimentosMultiSelect({
   function toggleOne(value: string) {
     const next = new Set(selectedSet);
     if (next.has(value)) {
-      // Não permitir esvaziar a seleção: se for o último, ignora.
-      if (next.size <= 1) return;
       next.delete(value);
     } else {
       next.add(value);
@@ -129,16 +127,14 @@ export function EmpreendimentosMultiSelect({
 
   function toggleAll() {
     if (allSelected) {
-      // Mantém invariante de pelo menos 1 selecionado: cai pro primeiro do catálogo.
-      onChange(options[0]?.value ? [options[0].value] : []);
+      onChange([]);
     } else {
       onChange(options.map((opt) => opt.value));
     }
   }
 
   function clearAll() {
-    if (options.length === 0) return;
-    onChange([options[0]!.value]);
+    onChange([]);
   }
 
   const triggerLabel = (() => {
@@ -220,7 +216,6 @@ export function EmpreendimentosMultiSelect({
                 ) : (
                   filteredOptions.map((opt) => {
                     const checked = selectedSet.has(opt.value);
-                    const isLastSelected = checked && selectedOptions.length === 1;
                     return (
                       <label
                         key={opt.value}
@@ -234,7 +229,6 @@ export function EmpreendimentosMultiSelect({
                           className="empSelect-checkbox"
                           checked={checked}
                           onChange={() => toggleOne(opt.value)}
-                          disabled={isLastSelected}
                           aria-label={opt.label}
                         />
                         <span className="empSelect-item-label">{opt.label}</span>
@@ -257,7 +251,7 @@ export function EmpreendimentosMultiSelect({
                   type="button"
                   className="empSelect-foot-btn"
                   onClick={clearAll}
-                  disabled={selectedOptions.length <= 1}
+                  disabled={selectedOptions.length === 0}
                 >
                   Limpar
                 </button>
