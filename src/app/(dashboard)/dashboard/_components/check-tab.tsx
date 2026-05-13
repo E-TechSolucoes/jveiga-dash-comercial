@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  AlertCircle,
   Award,
   BadgeCheck,
   Building2,
@@ -84,18 +85,29 @@ function countDone(map: StateMap, items: CheckItem[]): number {
 }
 
 export function CheckTab({ comercialName, empreendimentoIds }: Props) {
-  // Primeiro id selecionado dirige reads. PUT escreve em todos via array.
+  // Todos os estandes selecionados são lidos juntos e o backend devolve a
+  // view já mesclada (ALL-must-agree) + flag `divergent` por item. PUT
+  // escreve uma linha por estande via fan-out no service.
   const empreendimentoId = empreendimentoIds[0] ?? null;
+  // Memoiza pra que o eslint deps + useEffect comparem por referência estável
+  // quando a prop não mudou de fato.
+  const empreendimentoIdsKey = empreendimentoIds.join(",");
+  const selectedEmpIds = useMemo<number[]>(
+    () => empreendimentoIds,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [empreendimentoIdsKey],
+  );
 
   const [sub, setSub] = useState<ChecklistType>("base");
 
   const [log, setLog] = useState<ValidationLogEntry[]>([]);
 
-  // Estande (base) — granularidade DIÁRIA. O backend mantém uma linha por
-  // (user_id, day) com items[] em JSONB. O GET unificado já devolve o
-  // catálogo mesclado com o estado de hoje para o usuário do JWT.
+  // Estande (base) — granularidade DIÁRIA, uma linha por
+  // (empreendimento_id, day) com items[] em JSONB. O GET unificado já
+  // devolve o catálogo mesclado entre os estandes selecionados.
   const [baseItems, setBaseItems] = useState<CheckItem[]>([]);
   const [baseChecks, setBaseChecks] = useState<StateMap>({});
+  const [baseDivergent, setBaseDivergent] = useState<StateMap>({});
   const [baseItemIds, setBaseItemIds] = useState<Record<string, string>>({});
   const [baseDay, setBaseDay] = useState<string | null>(null);
   const [baseLoading, setBaseLoading] = useState(true);
@@ -106,6 +118,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
   // Rotina Diária — mesma arquitetura do estande, paths /check-items-daily.
   const [diarioItems, setDiarioItems] = useState<CheckItem[]>([]);
   const [diarioMap, setDiarioMap] = useState<StateMap>({});
+  const [diarioDivergent, setDiarioDivergent] = useState<StateMap>({});
   const [diarioItemIds, setDiarioItemIds] = useState<Record<string, string>>({});
   const [diarioDay, setDiarioDay] = useState<string | null>(null);
   const [diarioLoading, setDiarioLoading] = useState(true);
@@ -113,9 +126,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
   const [diarioSaveError, setDiarioSaveError] = useState<string | null>(null);
   const [diarioSaving, setDiarioSaving] = useState(false);
 
-  // Premiação — mesma arquitetura, paths /check-items-award.
+  // Premiação — agora é per-estande (não mais pessoal). Mesma arquitetura
+  // de Base/Rotina, paths /check-items-award.
   const [premItems, setPremItems] = useState<CheckItem[]>([]);
   const [premMap, setPremMap] = useState<StateMap>({});
+  const [premDivergent, setPremDivergent] = useState<StateMap>({});
   const [premItemIds, setPremItemIds] = useState<Record<string, string>>({});
   const [premDay, setPremDay] = useState<string | null>(null);
   const [premLoading, setPremLoading] = useState(true);
@@ -144,10 +159,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       setBaseLoading(true);
     });
     const ctrl = new AbortController();
-    fetchStandCheckItemsToday(empreendimentoId, ctrl.signal)
+    fetchStandCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
+        const divergent: StateMap = {};
         const ids: Record<string, string> = {};
         for (const it of items) {
           renderItems.push({
@@ -156,10 +172,12 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
             Icon: resolveLucideIcon(it.icon_name),
           });
           checks[it.code] = it.is_checked;
+          divergent[it.code] = it.divergent;
           ids[it.code] = it.id;
         }
         setBaseItems(renderItems);
         setBaseChecks(checks);
+        setBaseDivergent(divergent);
         setBaseItemIds(ids);
         setBaseDay(new Date().toISOString().slice(0, 10));
         setBaseError(null);
@@ -173,7 +191,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub, empreendimentoId]);
+  }, [sub, selectedEmpIds]);
 
   useEffect(() => {
     if (sub !== "diario") return;
@@ -182,10 +200,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       setDiarioLoading(true);
     });
     const ctrl = new AbortController();
-    fetchDailyCheckItemsToday(empreendimentoId, ctrl.signal)
+    fetchDailyCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
+        const divergent: StateMap = {};
         const ids: Record<string, string> = {};
         for (const it of items) {
           renderItems.push({
@@ -194,10 +213,12 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
             Icon: resolveLucideIcon(it.icon_name),
           });
           checks[it.code] = it.is_checked;
+          divergent[it.code] = it.divergent;
           ids[it.code] = it.id;
         }
         setDiarioItems(renderItems);
         setDiarioMap(checks);
+        setDiarioDivergent(divergent);
         setDiarioItemIds(ids);
         setDiarioDay(new Date().toISOString().slice(0, 10));
         setDiarioError(null);
@@ -211,7 +232,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub, empreendimentoId]);
+  }, [sub, selectedEmpIds]);
 
   useEffect(() => {
     if (sub !== "premiacao") return;
@@ -235,10 +256,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
     if (sub !== "premiacao") return;
 
     const ctrl = new AbortController();
-    fetchAwardCheckItemsToday(ctrl.signal)
+    fetchAwardCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
       .then((items) => {
         const renderItems: CheckItem[] = [];
         const checks: StateMap = {};
+        const divergent: StateMap = {};
         const ids: Record<string, string> = {};
         for (const it of items) {
           renderItems.push({
@@ -247,10 +269,12 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
             Icon: resolveLucideIcon(it.icon_name),
           });
           checks[it.code] = it.is_checked;
+          divergent[it.code] = it.divergent;
           ids[it.code] = it.id;
         }
         setPremItems(renderItems);
         setPremMap(checks);
+        setPremDivergent(divergent);
         setPremItemIds(ids);
         setPremDay(new Date().toISOString().slice(0, 10));
         setPremError(null);
@@ -264,7 +288,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       });
 
     return () => ctrl.abort();
-  }, [sub]);
+  }, [sub, selectedEmpIds]);
 
   useEffect(() => {
     if (!toast) return;
@@ -322,8 +346,9 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         items: itemsBody,
       });
 
-      // Resincroniza com a resposta (checked_at populado pelo servidor).
-      const byID = new Map(updated.items.map((e) => [e.item_id, e]));
+      // Resincroniza com a visão mesclada devolvida pelo servidor (já com
+      // ALL-must-agree e divergent populados).
+      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
       setBaseChecks((prev) => {
         const next = { ...prev };
         for (const item of baseItems) {
@@ -331,6 +356,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           if (!itemId) continue;
           const entry = byID.get(itemId);
           if (entry) next[item.id] = entry.is_checked;
+        }
+        return next;
+      });
+      setBaseDivergent((prev) => {
+        const next = { ...prev };
+        for (const item of baseItems) {
+          const itemId = baseItemIds[item.id];
+          if (!itemId) continue;
+          const entry = byID.get(itemId);
+          if (entry) next[item.id] = entry.divergent;
         }
         return next;
       });
@@ -373,7 +408,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         items: itemsBody,
       });
 
-      const byID = new Map(updated.items.map((e) => [e.item_id, e]));
+      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
       setDiarioMap((prev) => {
         const next = { ...prev };
         for (const item of diarioItems) {
@@ -381,6 +416,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           if (!itemId) continue;
           const entry = byID.get(itemId);
           if (entry) next[item.id] = entry.is_checked;
+        }
+        return next;
+      });
+      setDiarioDivergent((prev) => {
+        const next = { ...prev };
+        for (const item of diarioItems) {
+          const itemId = diarioItemIds[item.id];
+          if (!itemId) continue;
+          const entry = byID.get(itemId);
+          if (entry) next[item.id] = entry.divergent;
         }
         return next;
       });
@@ -397,6 +442,12 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
   const validatePrem = async () => {
     if (premSaving) return;
+    if (empreendimentoId == null) {
+      const msg = "Selecione um empreendimento válido para salvar a premiação.";
+      setPremSaveError(msg);
+      showToast("error", msg);
+      return;
+    }
 
     const itemsBody: ReplaceAwardCheckActivityBody["items"] = [];
     for (const item of premItems) {
@@ -413,10 +464,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
     try {
       const updated = await replaceAwardCheckActivity({
+        empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
 
-      const byID = new Map(updated.items.map((e) => [e.item_id, e]));
+      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
       setPremMap((prev) => {
         const next = { ...prev };
         for (const item of premItems) {
@@ -424,6 +476,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           if (!itemId) continue;
           const entry = byID.get(itemId);
           if (entry) next[item.id] = entry.is_checked;
+        }
+        return next;
+      });
+      setPremDivergent((prev) => {
+        const next = { ...prev };
+        for (const item of premItems) {
+          const itemId = premItemIds[item.id];
+          if (!itemId) continue;
+          const entry = byID.get(itemId);
+          if (entry) next[item.id] = entry.divergent;
         }
         return next;
       });
@@ -449,6 +511,12 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
     if (sub === "diario") return diarioMap;
     return premMap;
   }, [sub, baseChecks, diarioMap, premMap]);
+
+  const currentDivergent = useMemo(() => {
+    if (sub === "base") return baseDivergent;
+    if (sub === "diario") return diarioDivergent;
+    return premDivergent;
+  }, [sub, baseDivergent, diarioDivergent, premDivergent]);
 
   const currentSet = (key: string) => {
     if (sub === "base") {
@@ -566,7 +634,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           disabled={
             (sub === "base" && (baseSaving || empreendimentoId == null)) ||
             (sub === "diario" && (diarioSaving || empreendimentoId == null)) ||
-            (sub === "premiacao" && premSaving)
+            (sub === "premiacao" && (premSaving || empreendimentoId == null))
           }
           aria-busy={
             (sub === "base" && baseSaving) ||
@@ -820,6 +888,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
             {currentItems.map((item) => {
               const Icon = item.Icon;
               const checked = !!currentMap[item.id];
+              const divergent = !!currentDivergent[item.id];
               return (
                 <label
                   key={item.id}
@@ -835,6 +904,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                     <Icon />
                   </span>
                   <span className="ck-item-label">{item.label}</span>
+                  {divergent && (
+                    <span
+                      className="status-pill"
+                      data-state="warn"
+                      title="Algum estande tem este check diferente"
+                    >
+                      <AlertCircle size={12} strokeWidth={2.25} />
+                      Divergente
+                    </span>
+                  )}
                 </label>
               );
             })}
