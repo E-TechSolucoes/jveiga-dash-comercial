@@ -24,9 +24,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { DIAS_SEMANA, PONTOS, type Nivel } from "./arsenal-data";
-import { ACTION_ICON_MAP } from "./arsenal-icons";
-import { Toast, type ToastKind } from "./toast";
+import { DIAS_SEMANA, PONTOS, type Nivel } from "../../_components/arsenal-data";
+import { ACTION_ICON_MAP } from "../../_components/arsenal-icons";
+import { Toast, type ToastKind } from "../../_components/toast";
 
 const TOAST_DURATION_MS = 3000;
 import {

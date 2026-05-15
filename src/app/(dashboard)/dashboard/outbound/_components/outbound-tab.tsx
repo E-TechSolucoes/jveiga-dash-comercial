@@ -16,9 +16,9 @@ import {
   Upload,
 } from "lucide-react";
 
-import { fmt } from "./types";
-import { DIAS_SEMANA } from "./arsenal-data";
-import { Toast, type ToastKind } from "./toast";
+import { fmt } from "../../_components/types";
+import { DIAS_SEMANA } from "../../_components/arsenal-data";
+import { Toast, type ToastKind } from "../../_components/toast";
 import {
   isApiError,
   isoWeekNumber,

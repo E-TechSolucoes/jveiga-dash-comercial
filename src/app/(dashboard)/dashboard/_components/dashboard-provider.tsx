@@ -1,31 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { apiFetch, useAuth } from "@/lib/auth";
 import type { SalesPlanByMonth } from "@/lib/dashboard/sales-plans";
 
 import empreendimentosData from "../../../../../empreendimentos.json";
-import { ArsenalTab } from "./arsenal-tab";
-import { CascadeCard } from "./cascade-card";
-import { CheckTab } from "./check-tab";
-import { ConhecimentoTab } from "./conhecimento-tab";
-import { FunnelSection } from "./funnel-section";
-import { ImobTab } from "./imob-tab";
-import { OutboundTab } from "./outbound-tab";
-import { PastasTab, type PastasKpis } from "./pastas-tab";
-import { RankingSkinsSection } from "./ranking-skins-section";
-import { RecepTab } from "./recep-tab";
-import { RegrasOuroCard } from "./regras-ouro-card";
+import type { GoalBreakdownEntry } from "./cascade-card";
 import { TabsNav } from "./tabs-nav";
 import { Topbar } from "./topbar";
 import { XpBar } from "./xp-bar";
 import type {
   EmpresaOption,
   FunnelNumbers,
+  PastasKpis,
   PerformanceNumbers,
   PeriodoId,
-  TabId,
   Taxas,
 } from "./types";
 
@@ -175,7 +165,40 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
   return { from: toIsoDate(from), to: toIsoDate(to) };
 }
 
-export function DashboardShell() {
+type PeriodBounds = { from: string; to: string } | null;
+
+type DashboardContextValue = {
+  comercialName: string;
+  empresasNomes: string[];
+  empresasCodigos: string[];
+  empreendimentoIds: number[];
+  periodBounds: PeriodBounds;
+  empresasKey: string;
+  semana: number;
+  setSemana: (next: number) => void;
+  meta: number;
+  handleMetaChange: (v: number) => void;
+  taxas: Taxas;
+  real: FunnelNumbers;
+  performance: PerformanceNumbers;
+  goalsBreakdown: GoalBreakdownEntry[];
+  funnelLoading: boolean;
+  pastasKpis: PastasKpis | null;
+  pastasLoading: boolean;
+  pastasError: string | null;
+};
+
+const DashboardContext = createContext<DashboardContextValue | null>(null);
+
+export function useDashboardData(): DashboardContextValue {
+  const ctx = useContext(DashboardContext);
+  if (!ctx) {
+    throw new Error("useDashboardData must be used within <DashboardProvider>");
+  }
+  return ctx;
+}
+
+export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   const persistedFilters = useMemo(() => {
     const fallbackEmpresas = EMPRESAS[0]?.value ? [EMPRESAS[0].value] : [];
@@ -244,9 +267,6 @@ export function DashboardShell() {
     }
   }, [empresasEfetivas, periodo, customFrom, customTo]);
 
-  // Navigation
-  const [activeTab, setActiveTab] = useState<TabId>("resumo");
-
   // Meta / Conversions. `meta` é derivada em render (ver bloco abaixo de
   // `metaFromGoals`); só o override do usuário e o snapshot da seleção atual
   // ficam em state.
@@ -257,7 +277,7 @@ export function DashboardShell() {
   // até a primeira resposta — nunca devem ser exibidos como "real".
   const [taxas, setTaxas] = useState<Taxas>({ lv: 0.15, vp: 0.2, pv: 0.5 });
 
-  // Semana atual — compartilhada entre Resumo e Armas (arsenal)
+  // Semana atual — compartilhada entre Armas (arsenal) e Outbound.
   const [semana, setSemana] = useState(1);
 
   const [real, setReal] = useState<FunnelNumbers>({
@@ -355,7 +375,7 @@ export function DashboardShell() {
       ac.abort(new DOMException("Superseded by newer sales-plans request", "AbortError"));
   }, [currentMonthKey]);
 
-  const goalsBreakdown = useMemo(() => {
+  const goalsBreakdown = useMemo<GoalBreakdownEntry[]>(() => {
     if (!salesPlan) return [];
     // O `empreendimento_id` que o upstream devolve não bate com o
     // `codigo_interno_do_empreendimento` do catálogo (Conceito Poá vira 18 lá e
@@ -562,6 +582,48 @@ export function DashboardShell() {
   // garantindo remount limpo quando a seleção muda.
   const empresasKey = empresasEfetivas.join("|");
 
+  const contextValue = useMemo<DashboardContextValue>(
+    () => ({
+      comercialName,
+      empresasNomes,
+      empresasCodigos,
+      empreendimentoIds,
+      periodBounds,
+      empresasKey,
+      semana,
+      setSemana,
+      meta,
+      handleMetaChange,
+      taxas,
+      real,
+      performance,
+      goalsBreakdown,
+      funnelLoading,
+      pastasKpis,
+      pastasLoading,
+      pastasError,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      comercialName,
+      empresasNomesKey,
+      empresasCodigosKey,
+      empreendimentoIdsKey,
+      periodBounds,
+      empresasKey,
+      semana,
+      meta,
+      taxas,
+      real,
+      performance,
+      goalsBreakdown,
+      funnelLoading,
+      pastasKpis,
+      pastasLoading,
+      pastasError,
+    ],
+  );
+
   return (
     <div className="app">
       <div className="shell">
@@ -587,71 +649,9 @@ export function DashboardShell() {
         </div>
 
         <XpBar level={level} pct={checklistPct} />
-        <TabsNav active={activeTab} onSelect={setActiveTab} />
+        <TabsNav />
 
-        <div className="tc" data-active={activeTab === "resumo"}>
-          <CascadeCard
-            semana={semana}
-            meta={meta}
-            onMetaChange={handleMetaChange}
-            taxas={taxas}
-            real={real}
-            goalsBreakdown={goalsBreakdown}
-          />
-          <FunnelSection
-            real={real}
-            metaVendas={meta}
-            performance={performance}
-            loading={funnelLoading}
-          />
-          <RankingSkinsSection semana={semana} empreendimentoIds={empreendimentoIds} />
-          <RegrasOuroCard />
-        </div>
-
-        <div className="tc" data-active={activeTab === "checklist"}>
-          <CheckTab comercialName={comercialName} empreendimentoIds={empreendimentoIds} />
-        </div>
-
-        <div className="tc" data-active={activeTab === "recep"}>
-          <RecepTab key={empresasKey} empreendimentosNomes={empresasNomes} />
-        </div>
-
-        <div className="tc" data-active={activeTab === "pastas"}>
-          <PastasTab
-            key={empresasKey}
-            semNome={empresasNomes.length === 0}
-            empresasNomes={empresasNomes}
-            empresasCodigos={empresasCodigos}
-            periodBounds={periodBounds}
-            loading={pastasLoading}
-            error={pastasError}
-            kpis={pastasKpis}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "arsenal"}>
-          <ArsenalTab
-            semana={semana}
-            onSemanaChange={setSemana}
-            empreendimentoIds={empreendimentoIds}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "outbound"}>
-          <OutboundTab
-            semana={semana}
-            onSemanaChange={setSemana}
-            empreendimentoIds={empreendimentoIds}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "imob"}>
-          <ImobTab />
-        </div>
-
-        <div className="tc" data-active={activeTab === "conhecimento"}>
-          <ConhecimentoTab />
-        </div>
+        <DashboardContext.Provider value={contextValue}>{children}</DashboardContext.Provider>
       </div>
     </div>
   );

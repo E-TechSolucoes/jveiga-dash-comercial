@@ -16,7 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { fmt } from "./types";
+import { fmt, type PastasKpis } from "../../_components/types";
 
 type PastasPessoaItem = {
   pessoa: string;
@@ -28,13 +28,6 @@ type PastasPessoaItem = {
   unidade: string;
   referenciaData: string | null;
   idPasta: string | null;
-};
-
-export type PastasKpis = {
-  total: number;
-  emAndamento: number;
-  concluidas: number;
-  distratadas: number;
 };
 
 type Props = {

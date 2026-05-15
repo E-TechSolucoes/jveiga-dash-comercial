@@ -27,7 +27,7 @@ import {
   type ImobStatusUI,
   type RealEstateAgency,
 } from "@/lib/imob/api";
-import { Toast, type ToastKind } from "./toast";
+import { Toast, type ToastKind } from "../../_components/toast";
 
 type Imobiliaria = {
   id: string;

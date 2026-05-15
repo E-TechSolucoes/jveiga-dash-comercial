@@ -46,7 +46,7 @@ import {
   replaceAwardCheckActivity,
   type ReplaceAwardCheckActivityBody,
 } from "./check-items-award-activity";
-import { Toast, type ToastKind } from "./toast";
+import { Toast, type ToastKind } from "../../_components/toast";
 
 const TOAST_DURATION_MS = 3000;
 

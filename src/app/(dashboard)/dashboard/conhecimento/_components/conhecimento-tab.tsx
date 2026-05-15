@@ -15,8 +15,8 @@ import {
 
 import { listFieldActions, type FieldAction } from "@/lib/arsenal/api";
 
-import { OBJECOES, type ObjecaoTipo } from "./arsenal-data";
-import { ACTION_ICON_MAP } from "./arsenal-icons";
+import { OBJECOES, type ObjecaoTipo } from "../../_components/arsenal-data";
+import { ACTION_ICON_MAP } from "../../_components/arsenal-icons";
 
 type Sub = "acoes" | "treinos" | "objecoes";
 
