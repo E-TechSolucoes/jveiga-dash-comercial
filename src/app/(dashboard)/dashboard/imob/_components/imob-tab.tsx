@@ -17,16 +17,19 @@ import {
 } from "lucide-react";
 
 import {
+  useAgencies,
+  useCreateAgency,
+  useDeleteAgency,
+  usePatchAgency,
+  useValidateAllAgencies,
+} from "@/hooks/use-imob";
+import {
   STATUS_API_TO_UI,
   STATUS_UI_TO_API,
-  createAgency,
-  deleteAgency,
-  listAgencies,
-  patchAgency,
-  validateAllAgencies,
   type ImobStatusUI,
   type RealEstateAgency,
 } from "@/lib/imob/api";
+
 import { Toast, type ToastKind } from "../../_components/toast";
 
 type Imobiliaria = {
@@ -82,39 +85,44 @@ function extractError(err: unknown, fallback: string): string {
 }
 
 export function ImobTab() {
-  const [imobs, setImobs] = useState<Imobiliaria[]>([]);
-  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ kind: ToastKind; message: string } | null>(null);
 
   const [novoNome, setNovoNome] = useState("");
   const [novoResp, setNovoResp] = useState("");
   const [novoTel, setNovoTel] = useState("");
 
+  // Rascunho local do input numérico de corretores por imobiliária — um input
+  // controlado precisa de feedback imediato; o PATCH debounced sincroniza com
+  // o servidor e o rascunho é descartado quando a query revalida.
+  const [corretoresDraft, setCorretoresDraft] = useState<Record<string, number>>({});
+
   // Debounce timers per agency for the corretores number input — avoids one
   // PATCH per keystroke while still feeling instant in the UI.
   const corretoresTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
+  const agenciesQuery = useAgencies();
+  const imobs = useMemo<Imobiliaria[]>(
+    () => (agenciesQuery.data ?? []).map(fromApi),
+    [agenciesQuery.data],
+  );
+  const loading = agenciesQuery.isLoading;
+
+  const createMutation = useCreateAgency();
+  const patchMutation = usePatchAgency();
+  const deleteMutation = useDeleteAgency();
+  const validateAllMutation = useValidateAllAgencies();
+
   useEffect(() => {
-    let cancelled = false;
     const timers = corretoresTimers.current;
-    listAgencies()
-      .then((rows) => {
-        if (cancelled) return;
-        setImobs((rows ?? []).map(fromApi));
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setToast({ kind: "error", message: extractError(err, "Falha ao carregar imobiliárias") });
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
     return () => {
-      cancelled = true;
       timers.forEach((t) => clearTimeout(t));
       timers.clear();
     };
   }, []);
+
+  const loadError = agenciesQuery.isError
+    ? extractError(agenciesQuery.error, "Falha ao carregar imobiliárias")
+    : null;
 
   const counts = useMemo(() => {
     const acc: Record<ImobStatusUI, number> = {
@@ -138,12 +146,11 @@ export function ImobTab() {
       return;
     }
     try {
-      const created = await createAgency({
+      await createMutation.mutateAsync({
         name,
         responsible: novoResp.trim(),
         phone: novoTel.trim(),
       });
-      setImobs((prev) => [...prev, fromApi(created)]);
       setNovoNome("");
       setNovoResp("");
       setNovoTel("");
@@ -153,72 +160,62 @@ export function ImobTab() {
   };
 
   const setStatus = async (id: string, status: ImobStatusUI) => {
-    const prev = imobs;
-    setImobs((p) => p.map((i) => (i.id === id ? { ...i, status, validated: false } : i)));
     try {
-      const updated = await patchAgency(id, { status: STATUS_UI_TO_API[status] });
-      setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
+      await patchMutation.mutateAsync({ id, payload: { status: STATUS_UI_TO_API[status] } });
     } catch (err: unknown) {
-      setImobs(prev);
       setToast({ kind: "error", message: extractError(err, "Falha ao atualizar status") });
     }
   };
 
   const setCorretores = (id: string, value: number) => {
     const next = Math.max(0, value);
-    setImobs((p) => p.map((i) => (i.id === id ? { ...i, corretores: next, validated: false } : i)));
+    setCorretoresDraft((d) => ({ ...d, [id]: next }));
 
     const timers = corretoresTimers.current;
     const existing = timers.get(id);
     if (existing) clearTimeout(existing);
     const t = setTimeout(() => {
       timers.delete(id);
-      patchAgency(id, { broker_count: next })
-        .then((updated) => {
-          setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
-        })
-        .catch((err: unknown) => {
-          setToast({
-            kind: "error",
-            message: extractError(err, "Falha ao atualizar corretores"),
-          });
-        });
+      patchMutation.mutate(
+        { id, payload: { broker_count: next } },
+        {
+          onSuccess: () =>
+            setCorretoresDraft((d) => {
+              const rest = { ...d };
+              delete rest[id];
+              return rest;
+            }),
+          onError: (err: unknown) =>
+            setToast({
+              kind: "error",
+              message: extractError(err, "Falha ao atualizar corretores"),
+            }),
+        },
+      );
     }, 400);
     timers.set(id, t);
   };
 
   const validate = async (id: string) => {
-    const prev = imobs;
-    setImobs((p) => p.map((i) => (i.id === id ? { ...i, validated: true } : i)));
     try {
-      const updated = await patchAgency(id, { validated: true });
-      setImobs((p) => p.map((i) => (i.id === id ? fromApi(updated) : i)));
+      await patchMutation.mutateAsync({ id, payload: { validated: true } });
     } catch (err: unknown) {
-      setImobs(prev);
       setToast({ kind: "error", message: extractError(err, "Falha ao validar") });
     }
   };
 
   const validateAll = async () => {
-    const prev = imobs;
-    setImobs((p) => p.map((i) => ({ ...i, validated: true })));
     try {
-      await validateAllAgencies();
-      const fresh = await listAgencies();
-      setImobs((fresh ?? []).map(fromApi));
+      await validateAllMutation.mutateAsync();
     } catch (err: unknown) {
-      setImobs(prev);
       setToast({ kind: "error", message: extractError(err, "Falha ao validar todas") });
     }
   };
 
   const remove = async (id: string) => {
-    const prev = imobs;
-    setImobs((p) => p.filter((i) => i.id !== id));
     try {
-      await deleteAgency(id);
+      await deleteMutation.mutateAsync(id);
     } catch (err: unknown) {
-      setImobs(prev);
       setToast({ kind: "error", message: extractError(err, "Falha ao remover imobiliária") });
     }
   };
@@ -359,7 +356,9 @@ export function ImobTab() {
           </button>
         </header>
 
-        {loading ? (
+        {loadError ? (
+          <div className="data-empty">{loadError}</div>
+        ) : loading ? (
           <div className="data-empty">Carregando imobiliárias…</div>
         ) : imobs.length === 0 ? (
           <div className="data-empty">Nenhuma imobiliária cadastrada ainda.</div>
@@ -384,7 +383,7 @@ export function ImobTab() {
                     type="number"
                     min={0}
                     className="field-input field-input--narrow"
-                    value={im.corretores}
+                    value={corretoresDraft[im.id] ?? im.corretores}
                     onChange={(e) => setCorretores(im.id, Number(e.target.value) || 0)}
                   />
                 </label>

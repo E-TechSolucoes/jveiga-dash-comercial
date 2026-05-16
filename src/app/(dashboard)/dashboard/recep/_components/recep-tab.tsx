@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CalendarDays, Clock, Gift, Home, History, Moon, Sun, UserCheck } from "lucide-react";
+
+import { useRecep } from "@/hooks/use-dashboard";
+import type { RecepApiPayload } from "@/lib/dashboard/api";
 
 type Visita = {
   hora: string;
@@ -16,40 +19,6 @@ type RecepCorretor = {
   cel: string;
   manha: boolean;
   tarde: boolean;
-};
-
-type HistDia = {
-  data: string;
-  visitas: number;
-  manha: number;
-  tarde: number;
-};
-
-type RecepEmpreendimentoMatched = {
-  id: number | null;
-  nome: string | null;
-};
-
-type RecepApiPayload = {
-  empreendimentoId: number | null;
-  empreendimentoNomeMatch: string | null;
-  empreendimentosMatched?: RecepEmpreendimentoMatched[];
-  nomesSelecionados?: string[];
-  nomeSelecionado: string;
-  visitasHoje: {
-    hora: string | null;
-    cliente: string | null;
-    origem: string | null;
-    corretor: string | null;
-  }[];
-  plantao: {
-    corretor: string | null;
-    imobiliaria: string | null;
-    period: string | null;
-    empreendimento: string | null;
-  }[];
-  historico: HistDia[];
-  totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
 };
 
 function origemAccent(origem: string): "blue" | "violet" | "emerald" | "amber" | "slate" {
@@ -93,53 +62,19 @@ function plantaoToCorretores(rows: RecepApiPayload["plantao"]): RecepCorretor[] 
 }
 
 export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: string[] }) {
-  const [data, setData] = useState<RecepApiPayload | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const nomesNorm = useMemo(
     () => empreendimentosNomes.map((s) => s.trim()).filter((s) => s.length > 0),
     [empreendimentosNomes],
   );
-  const nomesKey = nomesNorm.join("||");
 
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (nomesNorm.length === 0) {
-        setData(null);
-        setError(null);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const q = new URLSearchParams({ nomes: nomesKey });
-        const res = await fetch(`/api/dashboard/recep?${q}`, { signal, cache: "no-store" });
-        const json = (await res.json()) as RecepApiPayload & { error?: string };
-        if (!res.ok) {
-          setData(null);
-          setError(json.error ?? `Erro ${res.status}`);
-          return;
-        }
-        setData(json);
-      } catch (e: unknown) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        setData(null);
-        setError(e instanceof Error ? e.message : "Falha ao carregar recepção.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [nomesKey, nomesNorm.length],
-  );
-
-  useEffect(() => {
-    const ac = new AbortController();
-    queueMicrotask(() => {
-      void load(ac.signal);
-    });
-    return () => ac.abort();
-  }, [load]);
+  const query = useRecep(nomesNorm);
+  const data: RecepApiPayload | null = query.data ?? null;
+  const loading = query.isLoading;
+  const error = query.isError
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Falha ao carregar recepção."
+    : null;
 
   const visitasHoje = useMemo(() => (data ? mapVisitas(data.visitasHoje) : []), [data]);
   const corretoresPlantao = useMemo(() => (data ? plantaoToCorretores(data.plantao) : []), [data]);

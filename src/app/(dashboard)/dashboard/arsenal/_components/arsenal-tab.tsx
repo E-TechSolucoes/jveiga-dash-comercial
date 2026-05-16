@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
@@ -24,29 +24,32 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import {
+  useArsenalWeek,
+  useCreateFieldBroker,
+  useDeleteFieldBroker,
+  usePatchFieldBroker,
+  usePutBrokerStats,
+  useUnvalidateExecution,
+  useUpsertExecution,
+  useValidateExecution,
+} from "@/hooks/use-arsenal";
+import { useAgencies } from "@/hooks/use-imob";
+import {
+  isApiError,
+  isoWeekNumber,
+  weekStartFromSemana,
+  type ArsenalActionWithExecutions,
+  type ArsenalBroker,
+  type ArsenalExecution,
+} from "@/lib/arsenal/api";
+import type { RealEstateAgency } from "@/lib/imob/api";
+
 import { DIAS_SEMANA, PONTOS, type Nivel } from "../../_components/arsenal-data";
 import { ACTION_ICON_MAP } from "../../_components/arsenal-icons";
 import { Toast, type ToastKind } from "../../_components/toast";
 
 const TOAST_DURATION_MS = 3000;
-import {
-  createFieldBroker,
-  deleteFieldBroker,
-  getArsenalWeek,
-  isApiError,
-  isoWeekNumber,
-  patchFieldBroker,
-  putBrokerStats,
-  unvalidateExecution,
-  upsertExecution,
-  validateExecution,
-  weekStartFromSemana,
-  type ArsenalActionWithExecutions,
-  type ArsenalBroker,
-  type ArsenalExecution,
-  type ArsenalWeek,
-} from "@/lib/arsenal/api";
-import { listAgencies, type RealEstateAgency } from "@/lib/imob/api";
 
 type Filter = "acao" | "treinamento" | "todos";
 
@@ -111,29 +114,9 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
 
   const [filter, setFilter] = useState<Filter>("acao");
 
-  const [week, setWeek] = useState<ArsenalWeek | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [novoNome, setNovoNome] = useState("");
   const [novaImob, setNovaImob] = useState(""); // agency id (uuid) or "" for none
   const [novoCel, setNovoCel] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  const [agencies, setAgencies] = useState<RealEstateAgency[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    listAgencies()
-      .then((rows) => {
-        if (!cancelled) setAgencies(rows ?? []);
-      })
-      .catch(() => {
-        // Silent: agency dropdown gracefully degrades to "Sem imobiliária".
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const [statDrafts, setStatDrafts] = useState<Record<string, StatDraft>>({});
   const [pendingSlot, setPendingSlot] = useState<Record<string, boolean>>({});
@@ -152,8 +135,6 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   const showToast = (kind: ToastKind, message: string) =>
     setToast({ kind, message, key: Date.now() });
 
-  const reqIdRef = useRef(0);
-
   // Defer weekStart computation to client mount: it depends on Date.now() in BR
   // timezone, so SSR and the first client render would otherwise diverge.
   const [mounted, setMounted] = useState(false);
@@ -167,38 +148,21 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     [mounted, semana],
   );
 
-  const loadWeek = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!weekStart || !empreendimentoId) return;
-      const id = ++reqIdRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getArsenalWeek(weekStart, empreendimentoId);
-        if (signal?.aborted || id !== reqIdRef.current) return;
-        setWeek(data);
-        setStatDrafts({});
-      } catch (e: unknown) {
-        if (signal?.aborted || id !== reqIdRef.current) return;
-        setWeek(null);
-        setError(errorMessage(e));
-      } finally {
-        if (!signal?.aborted && id === reqIdRef.current) {
-          setLoading(false);
-        }
-      }
-    },
-    [weekStart, empreendimentoId],
-  );
+  const weekQuery = useArsenalWeek(weekStart ?? "", empreendimentoId);
+  const week = weekQuery.data ?? null;
+  const loading = !mounted || weekQuery.isLoading;
+  const error = weekQuery.isError ? errorMessage(weekQuery.error) : null;
 
-  useEffect(() => {
-    if (!weekStart) return;
-    const ac = new AbortController();
-    queueMicrotask(() => {
-      void loadWeek(ac.signal);
-    });
-    return () => ac.abort();
-  }, [weekStart, loadWeek]);
+  const agenciesQuery = useAgencies();
+  const agencies = agenciesQuery.data ?? [];
+
+  const createBrokerMutation = useCreateFieldBroker();
+  const patchBrokerMutation = usePatchFieldBroker();
+  const deleteBrokerMutation = useDeleteFieldBroker();
+  const brokerStatsMutation = usePutBrokerStats();
+  const upsertExecMutation = useUpsertExecution();
+  const validateExecMutation = useValidateExecution();
+  const unvalidateExecMutation = useUnvalidateExecution();
 
   const apiBrokers: ArsenalBroker[] = week?.brokers ?? [];
 
@@ -227,9 +191,8 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       showToast("error", "Semana não inicializada.");
       return;
     }
-    setCreating(true);
     try {
-      await createFieldBroker({
+      await createBrokerMutation.mutateAsync({
         empreendimento_id: empreendimentoId,
         week_start: weekStart,
         nome,
@@ -239,12 +202,9 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       setNovoNome("");
       setNovaImob("");
       setNovoCel("");
-      await loadWeek();
       showToast("success", `Corretor ${nome} cadastrado.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -256,9 +216,8 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   ) => {
     setPendingBroker((prev) => ({ ...prev, [broker.broker_id]: true }));
     try {
-      await patchFieldBroker(broker.broker_id, next);
+      await patchBrokerMutation.mutateAsync({ id: broker.broker_id, payload: next });
       setEditingBroker(null);
-      await loadWeek();
       showToast("success", `Corretor ${broker.nome} atualizado.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -275,8 +234,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     if (!window.confirm(`Remover ${broker.nome}?`)) return;
     setPendingBroker((prev) => ({ ...prev, [broker.broker_id]: true }));
     try {
-      await deleteFieldBroker(broker.broker_id);
-      await loadWeek();
+      await deleteBrokerMutation.mutateAsync(broker.broker_id);
       showToast("success", `Corretor ${broker.nome} removido.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -309,8 +267,12 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     };
     setPendingBroker((prev) => ({ ...prev, [broker.broker_id]: true }));
     try {
-      await putBrokerStats(broker.broker_id, payload);
-      await loadWeek();
+      await brokerStatsMutation.mutateAsync({ brokerId: broker.broker_id, payload });
+      setStatDrafts((prev) => {
+        const next = { ...prev };
+        delete next[broker.broker_id];
+        return next;
+      });
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     } finally {
@@ -334,13 +296,18 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     const slot = executionSlotKey(actionId, weekday);
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
-      const row = await upsertExecution(actionId, weekStart, weekday, empreendimentoId, {
-        local: draft.local.trim() || null,
-        participant_brokers: draft.participantIds,
+      const row = await upsertExecMutation.mutateAsync({
+        actionId,
+        weekStart,
+        weekday,
+        empreendimentoId,
+        payload: {
+          local: draft.local.trim() || null,
+          participant_brokers: draft.participantIds,
+        },
       });
       const id = executionId ?? row.id;
-      await validateExecution(id);
-      await loadWeek();
+      await validateExecMutation.mutateAsync(id);
       const actionName = week?.actions.find((a) => a.action.id === actionId)?.action.nome;
       const diaName = DIAS_SEMANA[weekday - 1] ?? `dia ${weekday}`;
       showToast(
@@ -364,8 +331,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     const slot = `unvalidate__${executionId}`;
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
-      await unvalidateExecution(executionId);
-      await loadWeek();
+      await unvalidateExecMutation.mutateAsync(executionId);
       showToast("success", "Validação desfeita.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -438,7 +404,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
         novoNome={novoNome}
         novaImob={novaImob}
         novoCel={novoCel}
-        creating={creating}
+        creating={createBrokerMutation.isPending}
         onNomeChange={setNovoNome}
         onImobChange={setNovaImob}
         onCelChange={setNovoCel}

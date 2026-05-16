@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -16,9 +16,16 @@ import {
   Upload,
 } from "lucide-react";
 
-import { fmt } from "../../_components/types";
-import { DIAS_SEMANA } from "../../_components/arsenal-data";
-import { Toast, type ToastKind } from "../../_components/toast";
+import {
+  useCreateLead,
+  useDeleteLead,
+  useImportLeads,
+  useOutboundWeek,
+  usePatchLead,
+  useUpsertCost,
+  useValidateAllLeads,
+  useValidateCost,
+} from "@/hooks/use-outbound";
 import {
   isApiError,
   isoWeekNumber,
@@ -28,19 +35,14 @@ import {
 import {
   OUTBOUND_STATUS_LABEL,
   OUTBOUND_STATUS_LIST,
-  createLead,
-  deleteLead,
-  getOutboundWeek,
-  importLeadsSpreadsheet,
-  patchLead,
-  upsertCost,
-  validateAllLeads,
-  validateCost,
   type OutboundLead,
   type OutboundRoiRow,
   type OutboundStatus,
-  type OutboundWeek,
 } from "@/lib/outbound/api";
+
+import { DIAS_SEMANA } from "../../_components/arsenal-data";
+import { Toast, type ToastKind } from "../../_components/toast";
+import { fmt } from "../../_components/types";
 
 const TOAST_DURATION_MS = 3000;
 
@@ -108,18 +110,35 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     [mounted, semana],
   );
 
-  const [week, setWeek] = useState<OutboundWeek | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const weekQuery = useOutboundWeek(weekStart ?? "", empreendimentoId);
+  const week = weekQuery.data ?? null;
+  const loading = !mounted || weekQuery.isLoading;
+  const error = weekQuery.isError ? errorMessage(weekQuery.error) : null;
+
+  const createLeadMutation = useCreateLead();
+  const importLeadsMutation = useImportLeads();
+  const patchLeadMutation = usePatchLead();
+  const deleteLeadMutation = useDeleteLead();
+  const validateAllLeadsMutation = useValidateAllLeads();
+  const upsertCostMutation = useUpsertCost();
+  const validateCostMutation = useValidateCost();
+
+  const creating = createLeadMutation.isPending;
+  const importing = importLeadsMutation.isPending;
 
   const [novoNome, setNovoNome] = useState("");
   const [novoTel, setNovoTel] = useState("");
   const [novoAcao, setNovoAcao] = useState<string>("");
-  const [creating, setCreating] = useState(false);
 
   const [importAcao, setImportAcao] = useState<string>("");
-  const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Rascunho local dos inputs numéricos de ROI — inputs controlados precisam
+  // de feedback imediato; o PUT debounced sincroniza com o servidor e o
+  // rascunho é descartado quando a query revalida.
+  const [roiDrafts, setRoiDrafts] = useState<
+    Record<string, { cost_planned: number; cost_real: number; vgv: number }>
+  >({});
 
   const [toast, setToast] = useState<{ kind: ToastKind; message: string; key: number } | null>(
     null,
@@ -131,29 +150,6 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
   }, [toast]);
   const showToast = (kind: ToastKind, message: string) =>
     setToast({ kind, message, key: Date.now() });
-
-  const reqIdRef = useRef(0);
-
-  const loadWeek = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!weekStart || !empreendimentoId) return;
-      const id = ++reqIdRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getOutboundWeek(weekStart, empreendimentoId);
-        if (signal?.aborted || id !== reqIdRef.current) return;
-        setWeek(data);
-      } catch (e: unknown) {
-        if (signal?.aborted || id !== reqIdRef.current) return;
-        setWeek(null);
-        setError(errorMessage(e));
-      } finally {
-        if (!signal?.aborted && id === reqIdRef.current) setLoading(false);
-      }
-    },
-    [weekStart, empreendimentoId],
-  );
 
   // actionsById is consumed by <LeadRow> only — it must include every action
   // that appears in the table, including trainings, so legacy training leads
@@ -190,18 +186,15 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     return out;
   }, [week?.roi]);
 
-  useEffect(() => {
-    if (!weekStart) return;
-    const ac = new AbortController();
-    queueMicrotask(() => {
-      void loadWeek(ac.signal);
-    });
-    return () => ac.abort();
-  }, [weekStart, loadWeek]);
-
   const leads = useMemo(() => week?.leads ?? [], [week?.leads]);
   const roi = useMemo(() => week?.roi ?? [], [week?.roi]);
   const novosCount = useMemo(() => leads.filter((l) => l.status === "new").length, [leads]);
+
+  // Mescla os rascunhos locais sobre as linhas da query para os inputs de ROI.
+  const roiView = useMemo(
+    () => roi.map((r) => (roiDrafts[r.action.id] ? { ...r, ...roiDrafts[r.action.id] } : r)),
+    [roi, roiDrafts],
+  );
 
   const addLead = async () => {
     if (!weekStart) return;
@@ -218,9 +211,8 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       showToast("error", "Selecione a ação para o lead.");
       return;
     }
-    setCreating(true);
     try {
-      await createLead({
+      await createLeadMutation.mutateAsync({
         empreendimento_id: empreendimentoId,
         week_start: weekStart,
         action_id: parsed.action_id,
@@ -232,12 +224,9 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       setNovoNome("");
       setNovoTel("");
       setNovoAcao("");
-      await loadWeek();
       showToast("success", "Lead cadastrado.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -252,9 +241,8 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
       showToast("error", "Selecione a ação antes de enviar a planilha.");
       return;
     }
-    setImporting(true);
     try {
-      const res = await importLeadsSpreadsheet({
+      const res = await importLeadsMutation.mutateAsync({
         file,
         action_id: parsed.action_id,
         week_start: weekStart,
@@ -262,40 +250,26 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
         weekday: parsed.weekday,
         ...(parsed.local ? { local: parsed.local } : {}),
       });
-      await loadWeek();
       const skippedNote = res.skipped > 0 ? ` (${res.skipped} ignorados sem nome)` : "";
       showToast("success", `${res.imported} leads importados${skippedNote}.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     } finally {
-      setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const updateStatus = async (id: string, status: OutboundStatus) => {
-    const prev = week;
-    setWeek((w) =>
-      w
-        ? {
-            ...w,
-            leads: w.leads.map((l) => (l.id === id ? { ...l, status, validated: false } : l)),
-          }
-        : w,
-    );
     try {
-      const updated = await patchLead(id, { status });
-      setWeek((w) => (w ? { ...w, leads: w.leads.map((l) => (l.id === id ? updated : l)) } : w));
+      await patchLeadMutation.mutateAsync({ id, payload: { status } });
     } catch (e: unknown) {
-      setWeek(prev);
       showToast("error", errorMessage(e));
     }
   };
 
   const validateOne = async (id: string) => {
     try {
-      const updated = await patchLead(id, { validated: true });
-      setWeek((w) => (w ? { ...w, leads: w.leads.map((l) => (l.id === id ? updated : l)) } : w));
+      await patchLeadMutation.mutateAsync({ id, payload: { validated: true } });
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     }
@@ -304,8 +278,7 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
   const validateAll = async () => {
     if (!weekStart || !empreendimentoId) return;
     try {
-      await validateAllLeads(weekStart, empreendimentoId);
-      await loadWeek();
+      await validateAllLeadsMutation.mutateAsync({ weekStart, empreendimentoId });
       showToast("success", "Todos os leads validados.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -313,12 +286,9 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
   };
 
   const removeLead = async (id: string) => {
-    const prev = week;
-    setWeek((w) => (w ? { ...w, leads: w.leads.filter((l) => l.id !== id) } : w));
     try {
-      await deleteLead(id);
+      await deleteLeadMutation.mutateAsync(id);
     } catch (e: unknown) {
-      setWeek(prev);
       showToast("error", errorMessage(e));
     }
   };
@@ -340,16 +310,14 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     value: number,
   ) => {
     const next = Math.max(0, value);
-    setWeek((w) =>
-      w
-        ? {
-            ...w,
-            roi: w.roi.map((r) =>
-              r.action.id === actionId ? { ...r, [field]: next, validated: false } : r,
-            ),
-          }
-        : w,
-    );
+    const row = (week?.roi ?? []).find((r) => r.action.id === actionId);
+    const base = roiDrafts[actionId] ?? {
+      cost_planned: row?.cost_planned ?? 0,
+      cost_real: row?.cost_real ?? 0,
+      vgv: row?.vgv ?? 0,
+    };
+    const draft = { ...base, [field]: next };
+    setRoiDrafts((d) => ({ ...d, [actionId]: draft }));
 
     if (!weekStart || !empreendimentoId) return;
     const timers = costTimers.current;
@@ -357,41 +325,23 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     if (existing) clearTimeout(existing);
     const t = setTimeout(() => {
       timers.delete(actionId);
-      const row = (week?.roi ?? []).find((r) => r.action.id === actionId);
-      const draft = {
-        cost_planned: row?.cost_planned ?? 0,
-        cost_real: row?.cost_real ?? 0,
-        vgv: row?.vgv ?? 0,
-        [field]: next,
-      } as { cost_planned: number; cost_real: number; vgv: number };
-      upsertCost({
-        empreendimento_id: empreendimentoId,
-        week_start: weekStart,
-        action_id: actionId,
-        ...draft,
-      })
-        .then((cost) => {
-          setWeek((w) =>
-            w
-              ? {
-                  ...w,
-                  roi: w.roi.map((r) =>
-                    r.action.id === actionId
-                      ? {
-                          ...r,
-                          cost_id: cost.id,
-                          cost_planned: cost.cost_planned,
-                          cost_real: cost.cost_real,
-                          vgv: cost.vgv,
-                          validated: cost.validated,
-                        }
-                      : r,
-                  ),
-                }
-              : w,
-          );
-        })
-        .catch((e: unknown) => showToast("error", errorMessage(e)));
+      upsertCostMutation.mutate(
+        {
+          empreendimento_id: empreendimentoId,
+          week_start: weekStart,
+          action_id: actionId,
+          ...draft,
+        },
+        {
+          onSuccess: () =>
+            setRoiDrafts((d) => {
+              const rest = { ...d };
+              delete rest[actionId];
+              return rest;
+            }),
+          onError: (e: unknown) => showToast("error", errorMessage(e)),
+        },
+      );
     }, 400);
     timers.set(actionId, t);
   };
@@ -400,30 +350,24 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
     if (!weekStart || !empreendimentoId) return;
     const row = roi.find((r) => r.action.id === actionId);
     if (!row) return;
+    const vals = roiDrafts[actionId] ?? {
+      cost_planned: row.cost_planned,
+      cost_real: row.cost_real,
+      vgv: row.vgv,
+    };
     try {
       // Make sure the row exists in the DB before flipping validated.
-      const cost = row.cost_id
-        ? await validateCost(row.cost_id)
-        : await upsertCost({
-            empreendimento_id: empreendimentoId,
-            week_start: weekStart,
-            action_id: actionId,
-            cost_planned: row.cost_planned,
-            cost_real: row.cost_real,
-            vgv: row.vgv,
-          }).then((c) => validateCost(c.id));
-      setWeek((w) =>
-        w
-          ? {
-              ...w,
-              roi: w.roi.map((r) =>
-                r.action.id === actionId
-                  ? { ...r, cost_id: cost.id, validated: cost.validated }
-                  : r,
-              ),
-            }
-          : w,
-      );
+      if (row.cost_id) {
+        await validateCostMutation.mutateAsync(row.cost_id);
+      } else {
+        const cost = await upsertCostMutation.mutateAsync({
+          empreendimento_id: empreendimentoId,
+          week_start: weekStart,
+          action_id: actionId,
+          ...vals,
+        });
+        await validateCostMutation.mutateAsync(cost.id);
+      }
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     }
@@ -702,7 +646,7 @@ export function OutboundTab({ semana, onSemanaChange, empreendimentoIds }: Props
                   </td>
                 </tr>
               ) : (
-                roi.map((r) => (
+                roiView.map((r) => (
                   <RoiRow key={r.action.id} row={r} onEdit={editRoi} onValidate={validateRoi} />
                 ))
               )}

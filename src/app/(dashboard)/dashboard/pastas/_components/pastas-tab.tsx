@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -16,19 +16,10 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { fmt, type PastasKpis } from "../../_components/types";
+import { usePastasList } from "@/hooks/use-dashboard";
+import type { PastasPessoaItem } from "@/lib/dashboard/api";
 
-type PastasPessoaItem = {
-  pessoa: string;
-  situacao: string;
-  valorTotal: number;
-  idsituacao: number | null;
-  empreendimento: string;
-  corretor: string;
-  unidade: string;
-  referenciaData: string | null;
-  idPasta: string | null;
-};
+import { fmt, type PastasKpis } from "../../_components/types";
 
 type Props = {
   semNome: boolean;
@@ -222,74 +213,24 @@ function PastasListSection({
   periodBounds: { from: string; to: string };
 }) {
   const [page, setPage] = useState(1);
-  const [listLoading, setListLoading] = useState(false);
-  const [listError, setListError] = useState<string | null>(null);
-  const [listTotal, setListTotal] = useState(0);
-  const [items, setItems] = useState<PastasPessoaItem[]>([]);
+
+  const query = usePastasList(empresasNomes, empresasCodigos, periodBounds, page);
+  const items: PastasPessoaItem[] = query.data?.items ?? [];
+  const listTotal = query.data?.total ?? 0;
+  const listLoading = query.isFetching;
+  const listError = query.isError
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Não foi possível carregar a lista."
+    : null;
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(listTotal / PASTAS_PAGE_SIZE)),
     [listTotal],
   );
 
-  const nomesKey = empresasNomes.join("||");
-  const codigosKey = empresasCodigos.join(",");
-
-  useEffect(() => {
-    const ac = new AbortController();
-    const signal = ac.signal;
-
-    void (async () => {
-      await Promise.resolve();
-      if (signal.aborted) return;
-      if (empresasNomes.length === 0 || !periodBounds) return;
-
-      setListLoading(true);
-      setListError(null);
-      try {
-        const params = new URLSearchParams({
-          nomes: nomesKey,
-          codigos: codigosKey,
-          from: periodBounds.from,
-          to: periodBounds.to,
-          page: String(page),
-        });
-        const res = await fetch(`/api/dashboard/pastas/list?${params.toString()}`, {
-          signal,
-          cache: "no-store",
-        });
-        if (signal.aborted) return;
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          setItems([]);
-          setListTotal(0);
-          setListError(body?.error ?? "Não foi possível carregar a lista.");
-          return;
-        }
-        const data = (await res.json()) as {
-          total?: number;
-          items?: PastasPessoaItem[];
-        };
-        if (signal.aborted) return;
-        const total = Number(data.total ?? 0);
-        setListTotal(total);
-        setItems(Array.isArray(data.items) ? data.items : []);
-        setListError(null);
-        const tp = Math.max(1, Math.ceil(total / PASTAS_PAGE_SIZE));
-        setPage((prev) => Math.min(prev, tp));
-      } catch (e) {
-        if ((e as Error).name === "AbortError" || signal.aborted) return;
-        setItems([]);
-        setListTotal(0);
-        setListError("Não foi possível carregar a lista.");
-      } finally {
-        if (!signal.aborted) setListLoading(false);
-      }
-    })();
-
-    return () => ac.abort(new DOMException("Superseded pastas list", "AbortError"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, nomesKey, codigosKey, periodBounds]);
+  // Clamp the active page if the result set shrank below it (render-phase).
+  if (page > totalPages) setPage(totalPages);
 
   const fromIdx = listTotal === 0 ? 0 : (page - 1) * PASTAS_PAGE_SIZE + 1;
   const toIdx = listTotal === 0 ? 0 : Math.min(page * PASTAS_PAGE_SIZE, listTotal);

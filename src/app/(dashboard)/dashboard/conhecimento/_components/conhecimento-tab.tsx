@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   CircleDollarSign,
   Dumbbell,
@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { listFieldActions, type FieldAction } from "@/lib/arsenal/api";
+import { useFieldActions } from "@/hooks/use-field-actions";
 
 import { OBJECOES, type ObjecaoTipo } from "../../_components/arsenal-data";
 import { ACTION_ICON_MAP } from "../../_components/arsenal-icons";
@@ -39,29 +39,18 @@ const TIPO_ACCENT: Record<ObjecaoTipo, "rose" | "amber" | "violet" | "blue" | "e
 
 export function ConhecimentoTab() {
   const [sub, setSub] = useState<Sub>("acoes");
-  const [actions, setActions] = useState<FieldAction[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    listFieldActions()
-      .then((rows) => {
-        if (!cancelled) setActions(rows ?? []);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Falha ao carregar o catálogo.";
-        setLoadError(message);
-        setActions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const query = useFieldActions();
+  const actions = query.data ?? [];
+  const loading = query.isLoading;
+  const loadError = query.isError
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Falha ao carregar o catálogo."
+    : null;
 
-  const loading = actions === null;
-  const acoes = (actions ?? []).filter((a) => a.type === "field_action");
-  const treinos = (actions ?? []).filter((a) => a.type === "training");
+  const acoes = actions.filter((a) => a.type === "field_action");
+  const treinos = actions.filter((a) => a.type === "training");
 
   return (
     <>
