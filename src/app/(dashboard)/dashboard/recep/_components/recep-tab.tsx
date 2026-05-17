@@ -78,6 +78,7 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
 
   const visitasHoje = useMemo(() => (data ? mapVisitas(data.visitasHoje) : []), [data]);
   const corretoresPlantao = useMemo(() => (data ? plantaoToCorretores(data.plantao) : []), [data]);
+  const plantaoHistorico = data?.plantaoHistorico ?? [];
   const historico = data?.historico ?? [];
 
   const plantaoManha = useMemo(
@@ -265,6 +266,72 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
         <header className="data-card-head">
           <div>
             <h2 className="data-card-title">
+              <History size={18} strokeWidth={2} /> Plantões encerrados
+            </h2>
+            <p className="data-card-sub">
+              Registros encerrados em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+            </p>
+          </div>
+        </header>
+        <div className="data-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Corretor</th>
+                <th>Imobiliária</th>
+                <th>Turno</th>
+                <th>Data</th>
+                <th>Entrada</th>
+                <th>Saída</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plantaoHistorico.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="cell-mute">
+                    Nenhum plantão encerrado nos últimos 14 dias para este empreendimento.
+                  </td>
+                </tr>
+              ) : (
+                plantaoHistorico.map((p, i) => {
+                  const per = (p.period ?? "").toLowerCase();
+                  return (
+                    <tr key={`${p.corretor ?? "—"}-${p.entrada ?? ""}-${i}`}>
+                      <td className="cell-strong">{(p.corretor ?? "").trim() || "—"}</td>
+                      <td>
+                        <span className="chip-soft" data-accent="blue">
+                          {(p.imobiliaria ?? "").trim() || "—"}
+                        </span>
+                      </td>
+                      <td>
+                        {per === "manha" ? (
+                          <span className="status-pill" data-state="warn">
+                            <Sun size={11} strokeWidth={2} /> Manhã
+                          </span>
+                        ) : per === "tarde" ? (
+                          <span className="status-pill" data-state="violet">
+                            <Moon size={11} strokeWidth={2} /> Tarde
+                          </span>
+                        ) : (
+                          <span className="cell-mute">—</span>
+                        )}
+                      </td>
+                      <td>{(p.data ?? "").trim() || "—"}</td>
+                      <td className="cell-hora">{(p.entrada ?? "").trim() || "—"}</td>
+                      <td className="cell-hora">{(p.saida ?? "").trim() || "—"}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="data-card">
+        <header className="data-card-head">
+          <div>
+            <h2 className="data-card-title">
               <History size={18} strokeWidth={2} /> Histórico — últimos dias
             </h2>
             <p className="data-card-sub">
@@ -374,6 +441,24 @@ function RecepSkeleton() {
             </h2>
             <p className="data-card-sub">
               Registros com status ativo em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+            </p>
+          </div>
+        </header>
+        <div className="data-table-wrap historic-table-wrap--sk">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="sk-row sk-pulse" />
+          ))}
+        </div>
+      </section>
+
+      <section className="data-card">
+        <header className="data-card-head">
+          <div>
+            <h2 className="data-card-title">
+              <History size={18} strokeWidth={2} /> Plantões encerrados
+            </h2>
+            <p className="data-card-sub">
+              Registros encerrados em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
             </p>
           </div>
         </header>

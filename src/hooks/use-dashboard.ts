@@ -10,6 +10,7 @@ import {
   getRecep,
   getSalesPlanByMonth,
   getTaxas,
+  type PastasListFilters,
 } from "@/lib/dashboard/api";
 
 import { qk } from "./query-keys";
@@ -63,6 +64,7 @@ export function usePastasList(
   codigos: string[],
   periodBounds: PeriodBounds,
   page: number,
+  filters: PastasListFilters,
 ) {
   return useQuery({
     queryKey: qk.pastasList(
@@ -71,9 +73,10 @@ export function usePastasList(
       periodBounds?.from ?? "",
       periodBounds?.to ?? "",
       page,
+      JSON.stringify(filters),
     ),
     queryFn: ({ signal }) =>
-      getPastasList(nomes, codigos, periodBounds!.from, periodBounds!.to, page, signal),
+      getPastasList(nomes, codigos, periodBounds!.from, periodBounds!.to, page, filters, signal),
     enabled: nomes.length > 0 && periodBounds != null,
     placeholderData: keepPreviousData,
   });

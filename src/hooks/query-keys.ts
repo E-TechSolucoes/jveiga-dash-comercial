@@ -7,8 +7,14 @@ export const qk = {
     ["funil", codigos, nomes, from, to] as const,
   pastasKpis: (codigos: string, nomes: string, from: string, to: string) =>
     ["pastas-kpis", codigos, nomes, from, to] as const,
-  pastasList: (codigos: string, nomes: string, from: string, to: string, page: number) =>
-    ["pastas-list", codigos, nomes, from, to, page] as const,
+  pastasList: (
+    codigos: string,
+    nomes: string,
+    from: string,
+    to: string,
+    page: number,
+    filters: string,
+  ) => ["pastas-list", codigos, nomes, from, to, page, filters] as const,
   recep: (nomes: string) => ["recep", nomes] as const,
   conversaoHistorica: (codigo: string, nome: string) =>
     ["conversao-historica", codigo, nome] as const,

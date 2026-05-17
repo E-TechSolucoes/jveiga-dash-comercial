@@ -93,6 +93,16 @@ export type RecepPlantaoRow = {
   empreendimento: string | null;
 };
 
+export type RecepPlantaoHistoRow = {
+  corretor: string | null;
+  imobiliaria: string | null;
+  period: string | null;
+  empreendimento: string | null;
+  data: string | null; // DD/MM/YYYY (entrada, fuso São Paulo)
+  entrada: string | null; // HH:MM
+  saida: string | null; // HH:MM
+};
+
 export type RecepHistDia = {
   data: string;
   visitas: number;
@@ -118,6 +128,7 @@ export type RecepPayload = {
   nomeSelecionado: string;
   visitasHoje: RecepVisitaRow[];
   plantao: RecepPlantaoRow[];
+  plantaoHistorico: RecepPlantaoHistoRow[];
   historico: RecepHistDia[];
   totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
 };
@@ -169,6 +180,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     nomeSelecionado,
     visitasHoje: [],
     plantao: [],
+    plantaoHistorico: [],
     historico: [],
     totals: { visitasHoje: 0, visitasPeriodo: 0, historicDays: 14 },
   };
@@ -189,8 +201,29 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     (p) => p.empreendimento && foldKeys.has(foldEmpreendimentoNome(p.empreendimento)),
   );
 
+  const [plantaoHistRawUntyped] = await bq.query({
+    query: `
+      SELECT
+        corretor,
+        imobiliaria,
+        period,
+        empreendimento,
+        FORMAT_TIMESTAMP('%d/%m/%Y', time_entered, 'America/Sao_Paulo') AS data,
+        FORMAT_TIMESTAMP('%H:%M', time_entered, 'America/Sao_Paulo') AS entrada,
+        FORMAT_TIMESTAMP('%H:%M', time_removed, 'America/Sao_Paulo') AS saida
+      FROM ${PLANTAO}
+      WHERE time_removed IS NOT NULL
+        AND time_removed >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)
+      ORDER BY time_removed DESC
+    `,
+  });
+  const plantaoHistRaw = plantaoHistRawUntyped as RecepPlantaoHistoRow[];
+  const plantaoHistorico = plantaoHistRaw.filter(
+    (p) => p.empreendimento && foldKeys.has(foldEmpreendimentoNome(p.empreendimento)),
+  );
+
   if (ids.length === 0) {
-    return { ...empty, plantao };
+    return { ...empty, plantao, plantaoHistorico };
   }
 
   const idsParam = ids;
@@ -283,6 +316,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     nomeSelecionado,
     visitasHoje,
     plantao,
+    plantaoHistorico,
     historico,
     totals: {
       visitasHoje: visitasHoje.length,
@@ -295,6 +329,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     matched,
     visitasHojeCount: visitasHoje.length,
     plantaoCount: plantao.length,
+    plantaoHistoricoCount: plantaoHistorico.length,
     historicoDays: historico.length,
     visitasPeriodo,
   });

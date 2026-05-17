@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -12,12 +12,14 @@ import {
   FileText,
   FolderOpen,
   Home,
+  Search,
   UserRound,
+  X,
   XCircle,
 } from "lucide-react";
 
 import { usePastasList } from "@/hooks/use-dashboard";
-import type { PastasPessoaItem } from "@/lib/dashboard/api";
+import type { PastasListFilters, PastasPessoaItem } from "@/lib/dashboard/api";
 
 import { fmt, type PastasKpis } from "../../_components/types";
 
@@ -203,6 +205,23 @@ function PastaCardSkel() {
 
 const PASTAS_PAGE_SIZE = 8;
 
+/** Atrasa a propagação de `value` em `delay` ms — usado nos campos de busca. */
+function useDebouncedValue<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
+const SITUACAO_OPTIONS: { value: PastasListFilters["situacao"]; label: string }[] = [
+  { value: "", label: "Todas as situações" },
+  { value: "andamento", label: "Em andamento" },
+  { value: "concluidas", label: "Concluídas" },
+  { value: "distratadas", label: "Distratadas" },
+];
+
 function PastasListSection({
   empresasNomes,
   empresasCodigos,
@@ -214,7 +233,46 @@ function PastasListSection({
 }) {
   const [page, setPage] = useState(1);
 
-  const query = usePastasList(empresasNomes, empresasCodigos, periodBounds, page);
+  const [pessoaInput, setPessoaInput] = useState("");
+  const [corretorInput, setCorretorInput] = useState("");
+  const [empreendimento, setEmpreendimento] = useState("");
+  const [situacao, setSituacao] = useState<PastasListFilters["situacao"]>("");
+
+  const pessoa = useDebouncedValue(pessoaInput);
+  const corretor = useDebouncedValue(corretorInput);
+
+  const filters: PastasListFilters = useMemo(
+    () => ({ pessoa, corretor, empreendimento, situacao }),
+    [pessoa, corretor, empreendimento, situacao],
+  );
+
+  const anyFilterActive =
+    pessoaInput.trim() !== "" ||
+    corretorInput.trim() !== "" ||
+    empreendimento !== "" ||
+    situacao !== "";
+
+  // Volta para a página 1 sempre que um filtro muda (ajuste em fase de render).
+  const filterKey = `${pessoa} ${corretor} ${empreendimento} ${situacao}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
+
+  const empreendimentoOptions = useMemo(
+    () => [...new Set(empresasNomes.map((n) => n.trim()).filter(Boolean))].sort(),
+    [empresasNomes],
+  );
+
+  function clearFilters() {
+    setPessoaInput("");
+    setCorretorInput("");
+    setEmpreendimento("");
+    setSituacao("");
+  }
+
+  const query = usePastasList(empresasNomes, empresasCodigos, periodBounds, page, filters);
   const items: PastasPessoaItem[] = query.data?.items ?? [];
   const listTotal = query.data?.total ?? 0;
   const listLoading = query.isFetching;
@@ -252,6 +310,59 @@ function PastasListSection({
         </p>
       </div>
 
+      <div className="pastas-filter-bar" role="search">
+        <label className="search-field">
+          <Search size={15} strokeWidth={1.85} aria-hidden />
+          <input
+            type="search"
+            value={pessoaInput}
+            onChange={(e) => setPessoaInput(e.target.value)}
+            placeholder="Buscar por pessoa…"
+            aria-label="Buscar por pessoa"
+          />
+        </label>
+        <label className="search-field">
+          <Search size={15} strokeWidth={1.85} aria-hidden />
+          <input
+            type="search"
+            value={corretorInput}
+            onChange={(e) => setCorretorInput(e.target.value)}
+            placeholder="Buscar por corretor…"
+            aria-label="Buscar por corretor"
+          />
+        </label>
+        <select
+          className="field-input filter-select"
+          value={empreendimento}
+          onChange={(e) => setEmpreendimento(e.target.value)}
+          aria-label="Filtrar por empreendimento"
+        >
+          <option value="">Todos os empreendimentos</option>
+          {empreendimentoOptions.map((nome) => (
+            <option key={nome} value={nome}>
+              {nome}
+            </option>
+          ))}
+        </select>
+        <select
+          className="field-input filter-select"
+          value={situacao}
+          onChange={(e) => setSituacao(e.target.value as PastasListFilters["situacao"])}
+          aria-label="Filtrar por situação"
+        >
+          {SITUACAO_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {anyFilterActive ? (
+          <button type="button" className="btn btn--ghost btn--sm" onClick={clearFilters}>
+            <X size={14} strokeWidth={2} /> Limpar
+          </button>
+        ) : null}
+      </div>
+
       {listError ? (
         <div className="info-banner info-banner--warn" style={{ marginTop: 12 }}>
           <AlertTriangle size={16} strokeWidth={2} />
@@ -267,7 +378,9 @@ function PastasListSection({
         </div>
       ) : listTotal === 0 ? (
         <div className="data-empty" style={{ marginTop: 12 }}>
-          Nenhuma pasta no período para este empreendimento.
+          {anyFilterActive
+            ? "Nenhuma pasta encontrada com os filtros atuais."
+            : "Nenhuma pasta no período para este empreendimento."}
         </div>
       ) : (
         <>

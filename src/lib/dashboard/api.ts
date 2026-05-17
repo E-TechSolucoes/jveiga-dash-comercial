@@ -29,6 +29,24 @@ export type PastasListPayload = {
   items: PastasPessoaItem[];
 };
 
+export type PastasListFilters = {
+  /** Busca por nome da pessoa (contém, sem acento). */
+  pessoa: string;
+  /** Busca por nome do corretor (contém, sem acento). */
+  corretor: string;
+  /** Nome exato de um empreendimento; "" = todos os selecionados. */
+  empreendimento: string;
+  /** Bucket de situação alinhado aos KPIs; "" = todas. */
+  situacao: "" | "andamento" | "concluidas" | "distratadas";
+};
+
+export const EMPTY_PASTAS_FILTERS: PastasListFilters = {
+  pessoa: "",
+  corretor: "",
+  empreendimento: "",
+  situacao: "",
+};
+
 export type RecepHistDia = {
   data: string;
   visitas: number;
@@ -58,6 +76,15 @@ export type RecepApiPayload = {
     imobiliaria: string | null;
     period: string | null;
     empreendimento: string | null;
+  }[];
+  plantaoHistorico: {
+    corretor: string | null;
+    imobiliaria: string | null;
+    period: string | null;
+    empreendimento: string | null;
+    data: string | null;
+    entrada: string | null;
+    saida: string | null;
   }[];
   historico: RecepHistDia[];
   totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
@@ -176,6 +203,7 @@ export async function getPastasList(
   from: string,
   to: string,
   page: number,
+  filters: PastasListFilters,
   signal?: AbortSignal,
 ): Promise<PastasListPayload> {
   const qs = new URLSearchParams({
@@ -185,6 +213,10 @@ export async function getPastasList(
     to,
     page: String(page),
   });
+  if (filters.pessoa.trim()) qs.set("pessoa", filters.pessoa.trim());
+  if (filters.corretor.trim()) qs.set("corretor", filters.corretor.trim());
+  if (filters.empreendimento.trim()) qs.set("empreendimento", filters.empreendimento.trim());
+  if (filters.situacao) qs.set("situacao", filters.situacao);
   const data = await fetchDashboardJson<{ total?: number; items?: PastasPessoaItem[] }>(
     `/api/dashboard/pastas/list?${qs.toString()}`,
     signal,

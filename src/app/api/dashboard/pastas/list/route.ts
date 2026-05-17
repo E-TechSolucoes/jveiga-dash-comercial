@@ -38,6 +38,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const toParam = sp.get("to");
   const pageRaw = sp.get("page");
   const page = pageRaw != null ? Number.parseInt(pageRaw, 10) : 1;
+  const pessoa = (sp.get("pessoa") ?? "").trim();
+  const corretor = (sp.get("corretor") ?? "").trim();
+  const empreendimento = (sp.get("empreendimento") ?? "").trim();
+  const situacaoRaw = (sp.get("situacao") ?? "").trim();
+  const situacao = ["andamento", "concluidas", "distratadas"].includes(situacaoRaw)
+    ? situacaoRaw
+    : "";
 
   if (nomes.length < 1) {
     return NextResponse.json(
@@ -63,6 +70,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       dateTo: toParam,
       page,
       pageSize: PASTAS_PAGE_SIZE,
+      pessoa,
+      corretor,
+      empreendimento,
+      situacao,
     });
     return NextResponse.json(payload, { status: 200 });
   } catch (err: unknown) {

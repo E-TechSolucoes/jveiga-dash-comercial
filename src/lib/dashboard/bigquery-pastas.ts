@@ -157,9 +157,16 @@ export async function fetchPastasTotais(input: PastasPeriodInput): Promise<Pasta
   return result;
 }
 
+export type PastasListSituacao = "" | "andamento" | "concluidas" | "distratadas";
+
 export type PastasListInput = PastasPeriodInput & {
   page: number;
   pageSize?: number;
+  /** Filtros server-side opcionais aplicados na CTE `filtered`. */
+  pessoa?: string;
+  corretor?: string;
+  empreendimento?: string;
+  situacao?: string;
 };
 
 const PASTAS_FILTER_CTE = `
@@ -172,7 +179,11 @@ const PASTAS_FILTER_CTE = `
       @ids AS ids,
       @nomes_fold AS nomes_fold,
       DATE(@dateFrom) AS d_from,
-      DATE(@dateTo) AS d_to
+      DATE(@dateTo) AS d_to,
+      @pessoa_fold AS pessoa_fold,
+      @corretor_fold AS corretor_fold,
+      @emp_fold AS emp_fold,
+      @situacao AS situacao
   ),
   filtered AS (
     SELECT
@@ -194,6 +205,15 @@ const PASTAS_FILTER_CTE = `
         SAFE_CAST(TRIM(CAST(p.idempreendimento AS STRING)) AS INT64) IN UNNEST(pr.ids)
         OR fold(p.empreendimento) IN UNNEST(pr.nomes_fold)
       )
+      AND (pr.pessoa_fold = '' OR fold(p.pessoa) LIKE CONCAT('%', pr.pessoa_fold, '%'))
+      AND (pr.corretor_fold = '' OR fold(p.corretor) LIKE CONCAT('%', pr.corretor_fold, '%'))
+      AND (pr.emp_fold = '' OR fold(p.empreendimento) = pr.emp_fold)
+      AND (
+        pr.situacao = ''
+        OR (pr.situacao = 'concluidas'  AND p.idsituacao = 5)
+        OR (pr.situacao = 'distratadas' AND p.idsituacao IN (3, 6))
+        OR (pr.situacao = 'andamento'   AND (p.idsituacao IS NULL OR p.idsituacao NOT IN (3, 5, 6)))
+      )
       AND p.referencia_data IS NOT NULL
       AND TRIM(p.referencia_data) != ''
       AND DATE(
@@ -207,11 +227,22 @@ const PASTAS_FILTER_TYPES: Record<string, string | string[]> = {
   nomes_fold: ["STRING"],
   dateFrom: "STRING",
   dateTo: "STRING",
+  pessoa_fold: "STRING",
+  corretor_fold: "STRING",
+  emp_fold: "STRING",
+  situacao: "STRING",
 };
 
 /**
  * Lista pastas (pessoa, situação, valor) com o mesmo filtro de nome/período, paginada.
  */
+/** Escapa curingas de LIKE (`%`, `_`, `\`) — o BigQuery usa `\` como escape no LIKE. */
+function escapeLike(value: string): string {
+  return value.replaceAll(/[\\%_]/g, "\\$&");
+}
+
+const PASTAS_SITUACOES = new Set(["andamento", "concluidas", "distratadas"]);
+
 export async function fetchPastasPessoasPage(input: PastasListInput): Promise<PastasListPayload> {
   const bq = getBigQuery();
   const ids = (input.empreendimentoCodigos ?? []).filter((n) => Number.isFinite(n));
@@ -224,11 +255,22 @@ export async function fetchPastasPessoasPage(input: PastasListInput): Promise<Pa
   const idsParam = ids.length > 0 ? ids : [-1];
   const nomesParam = nomes.length > 0 ? nomes : ["__NEVER_MATCH__"];
 
+  const pessoaFold = escapeLike(foldClient(input.pessoa ?? ""));
+  const corretorFold = escapeLike(foldClient(input.corretor ?? ""));
+  const empFold = foldClient(input.empreendimento ?? "");
+  const situacao = PASTAS_SITUACOES.has((input.situacao ?? "").trim())
+    ? (input.situacao ?? "").trim()
+    : "";
+
   const baseParams = {
     ids: idsParam,
     nomes_fold: nomesParam,
     dateFrom,
     dateTo,
+    pessoa_fold: pessoaFold,
+    corretor_fold: corretorFold,
+    emp_fold: empFold,
+    situacao,
   };
 
   const [countRows] = await bq.query({

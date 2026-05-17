@@ -1837,6 +1837,10 @@ body {
   background: var(--amber-600);
   box-shadow: 0 6px 14px -6px rgba(245, 158, 11, 0.55);
 }
+.seg-btn--rose {
+  background: var(--rose-700);
+  box-shadow: 0 6px 14px -6px rgba(190, 18, 60, 0.55);
+}
 
 /* ============= VALIDATION STRIP ============= */
 .val-strip {
@@ -4809,6 +4813,23 @@ body {
 }
 .pastas-list-head {
   margin-bottom: 12px;
+}
+.pastas-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.pastas-filter-bar .search-field {
+  flex: 1 1 200px;
+  min-width: 180px;
+}
+@media (max-width: 560px) {
+  .pastas-filter-bar .field-input,
+  .pastas-filter-bar .filter-select {
+    flex: 1 1 100%;
+  }
 }
 .pastas-list-title {
   margin: 0 0 4px;
