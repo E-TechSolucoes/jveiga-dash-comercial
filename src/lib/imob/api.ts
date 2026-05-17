@@ -8,8 +8,20 @@ export type RealEstateAgency = {
   responsible: string;
   phone: string;
   status: RealEstateAgencyStatus;
+  /** Derivado no backend: nº de field brokers vinculados. Somente leitura. */
   broker_count: number;
   validated: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Corretor de campo do cadastro global. */
+export type FieldBroker = {
+  id: string;
+  nome: string;
+  real_estate_agency_id: string | null;
+  celular: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -43,7 +55,6 @@ export type PatchAgencyPayload = Partial<{
   responsible: string;
   phone: string;
   status: RealEstateAgencyStatus;
-  broker_count: number;
   validated: boolean;
 }>;
 
@@ -71,4 +82,18 @@ export function deleteAgency(id: string): Promise<void> {
 
 export function validateAllAgencies(): Promise<{ updated: number }> {
   return apiFetch<{ updated: number }>(`${BASE}/validate-all`, { method: "POST" });
+}
+
+type PaginatedResponse<T> = {
+  data: T[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+};
+
+/** Lista os field brokers vinculados a uma imobiliária (cadastro global). */
+export async function getAgencyFieldBrokers(agencyId: string): Promise<FieldBroker[]> {
+  const qs = new URLSearchParams({ agency_id: agencyId, limit: "100" });
+  const res = await apiFetch<PaginatedResponse<FieldBroker>>(
+    `/api/v1/field-brokers?${qs.toString()}`,
+  );
+  return Array.isArray(res?.data) ? res.data : [];
 }

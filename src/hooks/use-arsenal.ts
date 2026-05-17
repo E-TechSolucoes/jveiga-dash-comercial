@@ -3,14 +3,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  addBrokerToWeek,
   createFieldBroker,
-  deleteFieldBroker,
   getArsenalWeek,
+  listGlobalBrokers,
   patchFieldBroker,
   putBrokerStats,
+  removeBrokerFromWeek,
   unvalidateExecution,
   upsertExecution,
   validateExecution,
+  type AddBrokerToWeekPayload,
   type BrokerStatsPayload,
   type CreateBrokerPayload,
   type PatchBrokerPayload,
@@ -29,11 +32,20 @@ export function useArsenalWeek(weekStart: string, empreendimentoId: number | nul
   });
 }
 
+/** Criar/editar um corretor global muda o broker_count derivado das
+ * imobiliárias e o cadastro global — revalida essas queries também. */
+function invalidateBrokerDependents(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ARSENAL_WEEK_KEY });
+  qc.invalidateQueries({ queryKey: qk.agencies() });
+  qc.invalidateQueries({ queryKey: ["agency-field-brokers"] });
+  qc.invalidateQueries({ queryKey: ["global-brokers"] });
+}
+
 export function useCreateFieldBroker() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateBrokerPayload) => createFieldBroker(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ARSENAL_WEEK_KEY }),
+    onSuccess: () => invalidateBrokerDependents(qc),
   });
 }
 
@@ -42,14 +54,30 @@ export function usePatchFieldBroker() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: PatchBrokerPayload }) =>
       patchFieldBroker(id, payload),
+    onSuccess: () => invalidateBrokerDependents(qc),
+  });
+}
+
+/** Lista o cadastro global de corretores para o seletor de adição à semana. */
+export function useGlobalBrokers(q: string) {
+  return useQuery({
+    queryKey: qk.globalBrokers(q),
+    queryFn: () => listGlobalBrokers(q),
+  });
+}
+
+export function useAddBrokerToWeek() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AddBrokerToWeekPayload) => addBrokerToWeek(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ARSENAL_WEEK_KEY }),
   });
 }
 
-export function useDeleteFieldBroker() {
+export function useRemoveBrokerFromWeek() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteFieldBroker(id),
+    mutationFn: (weeklyId: string) => removeBrokerFromWeek(weeklyId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ARSENAL_WEEK_KEY }),
   });
 }

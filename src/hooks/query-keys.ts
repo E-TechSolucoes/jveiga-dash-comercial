@@ -23,6 +23,8 @@ export const qk = {
     ["arsenal-week", weekStart, empreendimentoId] as const,
   fieldActions: () => ["field-actions"] as const,
   agencies: () => ["agencies"] as const,
+  agencyFieldBrokers: (agencyId: string) => ["agency-field-brokers", agencyId] as const,
+  globalBrokers: (q: string) => ["global-brokers", q] as const,
   outboundWeek: (weekStart: string, empreendimentoId: number) =>
     ["outbound-week", weekStart, empreendimentoId] as const,
 

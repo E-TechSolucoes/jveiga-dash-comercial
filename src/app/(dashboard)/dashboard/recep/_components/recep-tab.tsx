@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
-import { CalendarDays, Clock, Gift, Home, History, Moon, Sun, UserCheck } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  Download,
+  Gift,
+  Home,
+  History,
+  Moon,
+  Sun,
+  UserCheck,
+} from "lucide-react";
 
 import { useRecep } from "@/hooks/use-dashboard";
 import type { RecepApiPayload } from "@/lib/dashboard/api";
@@ -37,6 +47,25 @@ function mapVisitas(rows: RecepApiPayload["visitasHoje"]): Visita[] {
     origem: (v.origem ?? "—").trim() || "—",
     corretor: (v.corretor ?? "—").trim() || "—",
   }));
+}
+
+/** Baixa o histórico de visitas como CSV (separador `;`, BOM UTF-8 para Excel pt-BR). */
+function exportHistoricoCsv(rows: RecepApiPayload["historico"]): void {
+  const header = ["Data", "Visitas", "Manhã", "Tarde"];
+  const lines = [
+    header.join(";"),
+    ...rows.map((r) => [r.data, r.visitas, r.manha, r.tarde].join(";")),
+  ];
+  const csv = `﻿${lines.join("\r\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `historico-visitas-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function plantaoToCorretores(rows: RecepApiPayload["plantao"]): RecepCorretor[] {
@@ -340,9 +369,19 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
               <code className="text-xs">public_visitas</code>).
             </p>
           </div>
-          <div className="sh-meta">
-            <CalendarDays size={14} strokeWidth={1.75} />
-            {historico.length} dias · {data?.totals.visitasPeriodo ?? 0} visitas
+          <div className="data-card-head-actions">
+            <div className="sh-meta">
+              <CalendarDays size={14} strokeWidth={1.75} />
+              {historico.length} dias · {data?.totals.visitasPeriodo ?? 0} visitas
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => exportHistoricoCsv(historico)}
+              disabled={historico.length === 0}
+            >
+              <Download size={14} strokeWidth={2} /> Exportar CSV
+            </button>
           </div>
         </header>
         <ul className="hist-list">

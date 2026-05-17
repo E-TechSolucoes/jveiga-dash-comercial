@@ -25,16 +25,17 @@ import {
 } from "lucide-react";
 
 import {
+  useAddBrokerToWeek,
   useArsenalWeek,
   useCreateFieldBroker,
-  useDeleteFieldBroker,
   usePatchFieldBroker,
   usePutBrokerStats,
+  useRemoveBrokerFromWeek,
   useUnvalidateExecution,
   useUpsertExecution,
   useValidateExecution,
 } from "@/hooks/use-arsenal";
-import { useAgencies } from "@/hooks/use-imob";
+import { useAgencies, useAgencyFieldBrokers } from "@/hooks/use-imob";
 import {
   isApiError,
   isoWeekNumber,
@@ -158,7 +159,8 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
 
   const createBrokerMutation = useCreateFieldBroker();
   const patchBrokerMutation = usePatchFieldBroker();
-  const deleteBrokerMutation = useDeleteFieldBroker();
+  const addToWeekMutation = useAddBrokerToWeek();
+  const removeFromWeekMutation = useRemoveBrokerFromWeek();
   const brokerStatsMutation = usePutBrokerStats();
   const upsertExecMutation = useUpsertExecution();
   const validateExecMutation = useValidateExecution();
@@ -177,6 +179,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
 
   const validations = week?.validations ?? 0;
 
+  // Cadastra um corretor novo no cadastro global e já o adiciona à semana.
   const addCorretor = async () => {
     const nome = novoNome.trim();
     if (!nome) {
@@ -192,19 +195,42 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       return;
     }
     try {
-      await createBrokerMutation.mutateAsync({
-        empreendimento_id: empreendimentoId,
-        week_start: weekStart,
+      const created = await createBrokerMutation.mutateAsync({
         nome,
         real_estate_agency_id: novaImob || null,
         celular: novoCel.trim() || undefined,
       });
+      await addToWeekMutation.mutateAsync({
+        field_broker_id: created.id,
+        empreendimento_id: empreendimentoId,
+        week_start: weekStart,
+      });
       setNovoNome("");
       setNovaImob("");
       setNovoCel("");
-      showToast("success", `Corretor ${nome} cadastrado.`);
+      showToast("success", `Corretor ${nome} cadastrado e adicionado à semana.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
+    }
+  };
+
+  // Adiciona um corretor já existente no cadastro global à semana atual.
+  const addExistingBroker = async (brokerId: string): Promise<boolean> => {
+    if (!empreendimentoId || !weekStart) {
+      showToast("error", "Selecione um empreendimento no topo antes de adicionar.");
+      return false;
+    }
+    try {
+      await addToWeekMutation.mutateAsync({
+        field_broker_id: brokerId,
+        empreendimento_id: empreendimentoId,
+        week_start: weekStart,
+      });
+      showToast("success", "Corretor adicionado à semana.");
+      return true;
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+      return false;
     }
   };
 
@@ -231,11 +257,11 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   };
 
   const removeCorretor = async (broker: ArsenalBroker) => {
-    if (!window.confirm(`Remover ${broker.nome}?`)) return;
+    if (!window.confirm(`Remover ${broker.nome} desta semana?`)) return;
     setPendingBroker((prev) => ({ ...prev, [broker.broker_id]: true }));
     try {
-      await deleteBrokerMutation.mutateAsync(broker.broker_id);
-      showToast("success", `Corretor ${broker.nome} removido.`);
+      await removeFromWeekMutation.mutateAsync(broker.weekly_id);
+      showToast("success", `Corretor ${broker.nome} removido da semana.`);
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     } finally {
@@ -256,8 +282,9 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
 
   const flushBrokerStats = async (broker: ArsenalBroker) => {
     const draft = statDrafts[broker.broker_id];
-    if (!draft || !weekStart) return;
+    if (!draft || !weekStart || !empreendimentoId) return;
     const payload = {
+      empreendimento_id: empreendimentoId,
       week_start: weekStart,
       ind: draft.ind ?? broker.ind,
       vis: draft.vis ?? broker.vis,
@@ -404,11 +431,13 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
         novoNome={novoNome}
         novaImob={novaImob}
         novoCel={novoCel}
-        creating={createBrokerMutation.isPending}
+        creating={createBrokerMutation.isPending || addToWeekMutation.isPending}
+        addingToWeek={addToWeekMutation.isPending}
         onNomeChange={setNovoNome}
         onImobChange={setNovaImob}
         onCelChange={setNovoCel}
         onAdd={addCorretor}
+        onAddBroker={addExistingBroker}
         onSetStatDraft={setStatDraft}
         onFlushStats={flushBrokerStats}
         onRemove={removeCorretor}
@@ -501,10 +530,12 @@ type BrokersCardProps = {
   novaImob: string;
   novoCel: string;
   creating: boolean;
+  addingToWeek: boolean;
   onNomeChange: (value: string) => void;
   onImobChange: (value: string) => void;
   onCelChange: (value: string) => void;
   onAdd: () => void;
+  onAddBroker: (brokerId: string) => Promise<boolean>;
   onSetStatDraft: (brokerId: string, field: StatField, value: number) => void;
   onFlushStats: (broker: ArsenalBroker) => void;
   onRemove: (broker: ArsenalBroker) => void;
@@ -521,10 +552,12 @@ function BrokersCard({
   novaImob,
   novoCel,
   creating,
+  addingToWeek,
   onNomeChange,
   onImobChange,
   onCelChange,
   onAdd,
+  onAddBroker,
   onSetStatDraft,
   onFlushStats,
   onRemove,
@@ -545,6 +578,12 @@ function BrokersCard({
           </p>
         </div>
       </header>
+
+      <AddBrokerPicker agencies={agencies} disabled={addingToWeek} onAdd={onAddBroker} />
+
+      <p className="data-card-sub" style={{ marginTop: 4 }}>
+        Ou cadastre um corretor novo no cadastro global (já entra nesta semana):
+      </p>
 
       <div className="field-grid corr-form">
         <label className="field">
@@ -653,6 +692,85 @@ function BrokersCard({
         </table>
       </div>
     </section>
+  );
+}
+
+// AddBrokerPicker é o seletor em cascata imobiliária → corretor. Com ~80
+// imobiliárias e muitos corretores, listar tudo num select só é inviável;
+// aqui só busca os corretores da imobiliária escolhida (lazy).
+function AddBrokerPicker({
+  agencies,
+  disabled,
+  onAdd,
+}: {
+  agencies: RealEstateAgency[];
+  disabled: boolean;
+  onAdd: (brokerId: string) => Promise<boolean>;
+}) {
+  const [agencyId, setAgencyId] = useState("");
+  const [brokerId, setBrokerId] = useState("");
+  const brokersQuery = useAgencyFieldBrokers(agencyId, agencyId !== "");
+  const brokers = brokersQuery.data ?? [];
+
+  const handleAdd = async () => {
+    if (!brokerId) return;
+    const ok = await onAdd(brokerId);
+    if (ok) setBrokerId("");
+  };
+
+  return (
+    <div className="field-grid corr-form">
+      <label className="field">
+        <span className="field-label">Imobiliária</span>
+        <select
+          className="field-input"
+          value={agencyId}
+          onChange={(e) => {
+            setAgencyId(e.target.value);
+            setBrokerId("");
+          }}
+        >
+          <option value="">— Selecione a imobiliária —</option>
+          {agencies.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Corretor</span>
+        <select
+          className="field-input"
+          value={brokerId}
+          onChange={(e) => setBrokerId(e.target.value)}
+          disabled={agencyId === "" || brokersQuery.isLoading}
+        >
+          <option value="">
+            {agencyId === ""
+              ? "— Escolha uma imobiliária primeiro —"
+              : brokersQuery.isLoading
+                ? "Carregando corretores…"
+                : brokers.length === 0
+                  ? "Nenhum corretor nesta imobiliária"
+                  : "— Selecione o corretor —"}
+          </option>
+          {brokers.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className="btn btn--primary"
+        onClick={handleAdd}
+        disabled={disabled || brokerId === ""}
+      >
+        <Plus size={15} strokeWidth={2.25} /> Adicionar à semana
+      </button>
+    </div>
   );
 }
 

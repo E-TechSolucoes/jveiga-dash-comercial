@@ -3426,6 +3426,19 @@ body {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
+.data-card-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.data-card-head-actions .sh-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-mute);
+}
 .data-card-title {
   font-size: 16px;
   font-weight: 600;
@@ -4345,9 +4358,13 @@ body {
   flex-direction: column;
   gap: 10px;
 }
+.imob-item {
+  display: flex;
+  flex-direction: column;
+}
 .imob-card {
   display: grid;
-  grid-template-columns: 1.5fr auto auto auto auto;
+  grid-template-columns: auto 1.5fr auto auto auto auto;
   align-items: center;
   gap: 14px;
   padding: 14px 18px;
@@ -4357,6 +4374,85 @@ body {
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
+}
+.imob-expand-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--line-soft);
+  color: var(--ink-mute);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.imob-expand-btn:hover {
+  background: var(--blue-50);
+  color: var(--ink);
+}
+.imob-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-mute);
+}
+.imob-card-count strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.imob-card-body {
+  margin: -4px 0 2px;
+  padding: 12px 18px 14px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+.imob-brokers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.imob-broker-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 13px;
+}
+.imob-broker-row[data-inactive="true"] {
+  opacity: 0.6;
+}
+.imob-broker-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+}
+.imob-broker-cel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+.imob-brokers-empty {
+  font-size: 13px;
+  color: var(--ink-mute);
+  padding: 4px 2px;
 }
 .imob-card:hover {
   border-color: var(--line-strong);

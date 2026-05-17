@@ -64,6 +64,8 @@ export type ArsenalExecution = {
 };
 
 export type ArsenalBroker = {
+  /** id da atribuição semanal (empreendimento_weekly_field_broker). */
+  weekly_id: string;
   broker_id: string;
   nome: string;
   real_estate_agency_id: string | null;
@@ -113,17 +115,60 @@ export function listFieldActions(): Promise<FieldAction[]> {
 }
 
 export type CreateBrokerPayload = {
-  empreendimento_id: number;
-  week_start: string;
   nome: string;
   real_estate_agency_id?: string | null;
   celular?: string;
 };
 
-export function createFieldBroker(payload: CreateBrokerPayload) {
-  return apiFetch(`/api/v1/field-brokers`, {
+/** Corretor do cadastro global (resposta do POST /field-brokers). */
+export type GlobalBroker = {
+  id: string;
+  nome: string;
+  real_estate_agency_id: string | null;
+  celular: string | null;
+  is_active: boolean;
+};
+
+export function createFieldBroker(payload: CreateBrokerPayload): Promise<GlobalBroker> {
+  return apiFetch<GlobalBroker>(`/api/v1/field-brokers`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+type PaginatedResponse<T> = {
+  data: T[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+};
+
+/** Lista o cadastro global de corretores (para o seletor "adicionar à semana"). */
+export async function listGlobalBrokers(q: string): Promise<GlobalBroker[]> {
+  const qs = new URLSearchParams({ limit: "100", is_active: "true" });
+  if (q.trim()) qs.set("q", q.trim());
+  const res = await apiFetch<PaginatedResponse<GlobalBroker>>(
+    `/api/v1/field-brokers?${qs.toString()}`,
+  );
+  return Array.isArray(res?.data) ? res.data : [];
+}
+
+export type AddBrokerToWeekPayload = {
+  field_broker_id: string;
+  empreendimento_id: number;
+  week_start: string;
+};
+
+/** Vincula um corretor global a uma semana de um empreendimento. */
+export function addBrokerToWeek(payload: AddBrokerToWeekPayload) {
+  return apiFetch(`/api/v1/weekly-field-brokers`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Remove a atribuição semanal (não apaga o corretor global). */
+export function removeBrokerFromWeek(weeklyId: string) {
+  return apiFetch(`/api/v1/weekly-field-brokers/${encodeURIComponent(weeklyId)}`, {
+    method: "DELETE",
   });
 }
 
@@ -148,6 +193,7 @@ export function deleteFieldBroker(id: string) {
 }
 
 export type BrokerStatsPayload = {
+  empreendimento_id: number;
   week_start: string;
   ind: number;
   vis: number;

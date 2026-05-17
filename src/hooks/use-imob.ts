@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAgency,
   deleteAgency,
+  getAgencyFieldBrokers,
   listAgencies,
   patchAgency,
   validateAllAgencies,
@@ -20,6 +21,15 @@ export function useAgencies() {
   return useQuery({
     queryKey: AGENCIES_KEY,
     queryFn: () => listAgencies(),
+  });
+}
+
+/** Busca os field brokers de uma imobiliária — lazy, só quando `enabled`. */
+export function useAgencyFieldBrokers(agencyId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.agencyFieldBrokers(agencyId),
+    queryFn: () => getAgencyFieldBrokers(agencyId),
+    enabled,
   });
 }
 

@@ -1,23 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Building2,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
   Handshake,
   Home,
+  Phone,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
   Trash2,
+  UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
 
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   useAgencies,
+  useAgencyFieldBrokers,
   useCreateAgency,
   useDeleteAgency,
   usePatchAgency,
@@ -63,6 +71,10 @@ const FUNIL_STAGES: {
   { id: "ativa", label: "Ativa", Icon: CheckCircle2, accent: "emerald" },
 ];
 
+const IMOB_PAGE_SIZE = 10;
+
+type ValidacaoFiltro = "" | "validated" | "pending";
+
 function fromApi(a: RealEstateAgency): Imobiliaria {
   return {
     id: a.id,
@@ -84,6 +96,129 @@ function extractError(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Linha expansível de uma imobiliária: ao abrir, lista os field brokers. */
+function ImobRow({
+  im,
+  onStatus,
+  onValidate,
+  onRemove,
+}: {
+  im: Imobiliaria;
+  onStatus: (id: string, status: ImobStatusUI) => void;
+  onValidate: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const brokersQuery = useAgencyFieldBrokers(im.id, expanded);
+  const brokers = brokersQuery.data ?? [];
+
+  return (
+    <li className="imob-item">
+      <div className="imob-card" data-status={im.status}>
+        <button
+          type="button"
+          className="imob-expand-btn"
+          aria-expanded={expanded}
+          aria-label={expanded ? `Recolher ${im.nome}` : `Expandir ${im.nome}`}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? (
+            <ChevronUp size={16} strokeWidth={2} />
+          ) : (
+            <ChevronDown size={16} strokeWidth={2} />
+          )}
+        </button>
+
+        <div className="imob-card-info">
+          <div className="imob-card-name">{im.nome}</div>
+          <div className="imob-card-meta">
+            <span>{im.resp || "—"}</span>
+            <span className="dot-sep" aria-hidden>
+              ·
+            </span>
+            <span className="imob-card-tel">{im.tel || "—"}</span>
+          </div>
+        </div>
+
+        <span className="imob-card-count" title="Corretores vinculados">
+          <Users size={13} strokeWidth={2} aria-hidden />
+          <strong>{im.corretores}</strong>
+        </span>
+
+        <select
+          className="status-select status-select--lg"
+          value={im.status}
+          onChange={(e) => onStatus(im.id, e.target.value as ImobStatusUI)}
+          data-status={im.status}
+        >
+          {STATUS_LIST.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
+
+        {im.validated ? (
+          <span className="status-pill" data-state="ok">
+            <ShieldCheck size={12} strokeWidth={2} /> Salvo
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--success btn--xs"
+            onClick={() => onValidate(im.id)}
+          >
+            <Check size={12} strokeWidth={2.25} /> Validar
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="icon-action icon-action--danger"
+          onClick={() => onRemove(im.id)}
+          aria-label={`Remover ${im.nome}`}
+        >
+          <Trash2 size={14} strokeWidth={1.75} />
+        </button>
+      </div>
+
+      {expanded ? (
+        <div className="imob-card-body">
+          {brokersQuery.isLoading ? (
+            <div className="imob-brokers-empty">Carregando corretores…</div>
+          ) : brokersQuery.isError ? (
+            <div className="imob-brokers-empty">
+              {extractError(brokersQuery.error, "Falha ao carregar corretores")}
+            </div>
+          ) : brokers.length === 0 ? (
+            <div className="imob-brokers-empty">
+              Nenhum corretor de campo vinculado a esta imobiliária.
+            </div>
+          ) : (
+            <ul className="imob-brokers">
+              {brokers.map((b) => (
+                <li key={b.id} className="imob-broker-row" data-inactive={!b.is_active}>
+                  <span className="imob-broker-name">
+                    <UserRound size={14} strokeWidth={1.85} aria-hidden />
+                    {b.nome}
+                  </span>
+                  <span className="imob-broker-cel">
+                    <Phone size={12} strokeWidth={1.85} aria-hidden />
+                    {b.celular?.trim() || "—"}
+                  </span>
+                  <span className="status-pill" data-state={b.is_active ? "ok" : "muted"}>
+                    {b.is_active ? "Ativo" : "Inativo"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 export function ImobTab() {
   const [toast, setToast] = useState<{ kind: ToastKind; message: string } | null>(null);
 
@@ -91,14 +226,10 @@ export function ImobTab() {
   const [novoResp, setNovoResp] = useState("");
   const [novoTel, setNovoTel] = useState("");
 
-  // Rascunho local do input numérico de corretores por imobiliária — um input
-  // controlado precisa de feedback imediato; o PATCH debounced sincroniza com
-  // o servidor e o rascunho é descartado quando a query revalida.
-  const [corretoresDraft, setCorretoresDraft] = useState<Record<string, number>>({});
-
-  // Debounce timers per agency for the corretores number input — avoids one
-  // PATCH per keystroke while still feeling instant in the UI.
-  const corretoresTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const [searchInput, setSearchInput] = useState("");
+  const [validacao, setValidacao] = useState<ValidacaoFiltro>("");
+  const [page, setPage] = useState(1);
+  const search = useDebouncedValue(searchInput.trim().toLowerCase());
 
   const agenciesQuery = useAgencies();
   const imobs = useMemo<Imobiliaria[]>(
@@ -112,25 +243,12 @@ export function ImobTab() {
   const deleteMutation = useDeleteAgency();
   const validateAllMutation = useValidateAllAgencies();
 
-  useEffect(() => {
-    const timers = corretoresTimers.current;
-    return () => {
-      timers.forEach((t) => clearTimeout(t));
-      timers.clear();
-    };
-  }, []);
-
   const loadError = agenciesQuery.isError
     ? extractError(agenciesQuery.error, "Falha ao carregar imobiliárias")
     : null;
 
   const counts = useMemo(() => {
-    const acc: Record<ImobStatusUI, number> = {
-      prospect: 0,
-      visita: 0,
-      acordo: 0,
-      ativa: 0,
-    };
+    const acc: Record<ImobStatusUI, number> = { prospect: 0, visita: 0, acordo: 0, ativa: 0 };
     imobs.forEach((i) => {
       acc[i.status]++;
     });
@@ -138,6 +256,35 @@ export function ImobTab() {
   }, [imobs]);
 
   const totalCorretores = useMemo(() => imobs.reduce((sum, i) => sum + i.corretores, 0), [imobs]);
+
+  const filtered = useMemo(
+    () =>
+      imobs.filter((im) => {
+        if (validacao === "validated" && !im.validated) return false;
+        if (validacao === "pending" && im.validated) return false;
+        if (search) {
+          if (!im.nome.toLowerCase().includes(search) && !im.resp.toLowerCase().includes(search)) {
+            return false;
+          }
+        }
+        return true;
+      }),
+    [imobs, validacao, search],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / IMOB_PAGE_SIZE));
+
+  // Volta pra página 1 quando o filtro muda (ajuste em fase de render).
+  const filterKey = `${search}|${validacao}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
+  if (page > totalPages) setPage(totalPages);
+
+  const pageItems = filtered.slice((page - 1) * IMOB_PAGE_SIZE, page * IMOB_PAGE_SIZE);
+  const anyFilterActive = search !== "" || validacao !== "";
 
   const addImob = async () => {
     const name = novoNome.trim().toUpperCase();
@@ -165,35 +312,6 @@ export function ImobTab() {
     } catch (err: unknown) {
       setToast({ kind: "error", message: extractError(err, "Falha ao atualizar status") });
     }
-  };
-
-  const setCorretores = (id: string, value: number) => {
-    const next = Math.max(0, value);
-    setCorretoresDraft((d) => ({ ...d, [id]: next }));
-
-    const timers = corretoresTimers.current;
-    const existing = timers.get(id);
-    if (existing) clearTimeout(existing);
-    const t = setTimeout(() => {
-      timers.delete(id);
-      patchMutation.mutate(
-        { id, payload: { broker_count: next } },
-        {
-          onSuccess: () =>
-            setCorretoresDraft((d) => {
-              const rest = { ...d };
-              delete rest[id];
-              return rest;
-            }),
-          onError: (err: unknown) =>
-            setToast({
-              kind: "error",
-              message: extractError(err, "Falha ao atualizar corretores"),
-            }),
-        },
-      );
-    }, 400);
-    timers.set(id, t);
   };
 
   const validate = async (id: string) => {
@@ -346,9 +464,9 @@ export function ImobTab() {
       <section className="data-card">
         <header className="data-card-head">
           <div>
-            <h2 className="data-card-title">Imobiliárias ({imobs.length})</h2>
+            <h2 className="data-card-title">Imobiliárias ({filtered.length})</h2>
             <p className="data-card-sub">
-              Atualize status e número de corretores ativos por parceira.
+              Atualize o status e expanda para ver os corretores de campo de cada parceira.
             </p>
           </div>
           <button type="button" className="btn btn--success btn--sm" onClick={validateAll}>
@@ -356,76 +474,97 @@ export function ImobTab() {
           </button>
         </header>
 
+        <div className="pastas-filter-bar" role="search">
+          <label className="search-field">
+            <Search size={15} strokeWidth={1.85} aria-hidden />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Buscar por nome ou responsável…"
+              aria-label="Buscar imobiliária"
+            />
+          </label>
+          <select
+            className="field-input filter-select"
+            value={validacao}
+            onChange={(e) => setValidacao(e.target.value as ValidacaoFiltro)}
+            aria-label="Filtrar por validação"
+          >
+            <option value="">Todas</option>
+            <option value="validated">Validadas</option>
+            <option value="pending">Pendentes</option>
+          </select>
+          {anyFilterActive ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setSearchInput("");
+                setValidacao("");
+              }}
+            >
+              Limpar
+            </button>
+          ) : null}
+        </div>
+
         {loadError ? (
           <div className="data-empty">{loadError}</div>
         ) : loading ? (
           <div className="data-empty">Carregando imobiliárias…</div>
         ) : imobs.length === 0 ? (
           <div className="data-empty">Nenhuma imobiliária cadastrada ainda.</div>
+        ) : filtered.length === 0 ? (
+          <div className="data-empty">Nenhuma imobiliária encontrada com os filtros atuais.</div>
         ) : (
-          <ul className="imob-list">
-            {imobs.map((im) => (
-              <li key={im.id} className="imob-card" data-status={im.status}>
-                <div className="imob-card-info">
-                  <div className="imob-card-name">{im.nome}</div>
-                  <div className="imob-card-meta">
-                    <span>{im.resp || "—"}</span>
-                    <span className="dot-sep" aria-hidden>
-                      ·
-                    </span>
-                    <span className="imob-card-tel">{im.tel || "—"}</span>
-                  </div>
-                </div>
+          <>
+            <ul className="imob-list">
+              {pageItems.map((im) => (
+                <ImobRow
+                  key={im.id}
+                  im={im}
+                  onStatus={setStatus}
+                  onValidate={validate}
+                  onRemove={remove}
+                />
+              ))}
+            </ul>
 
-                <label className="field field--inline">
-                  <span className="field-label">Corretores</span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="field-input field-input--narrow"
-                    value={corretoresDraft[im.id] ?? im.corretores}
-                    onChange={(e) => setCorretores(im.id, Number(e.target.value) || 0)}
-                  />
-                </label>
-
-                <select
-                  className="status-select status-select--lg"
-                  value={im.status}
-                  onChange={(e) => setStatus(im.id, e.target.value as ImobStatusUI)}
-                  data-status={im.status}
-                >
-                  {STATUS_LIST.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABEL[s]}
-                    </option>
-                  ))}
-                </select>
-
-                {im.validated ? (
-                  <span className="status-pill" data-state="ok">
-                    <ShieldCheck size={12} strokeWidth={2} /> Salvo
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn--success btn--xs"
-                    onClick={() => validate(im.id)}
-                  >
-                    <Check size={12} strokeWidth={2.25} /> Validar
-                  </button>
-                )}
-
+            <div
+              className="admin-pager"
+              style={{ marginTop: 12, borderRadius: "var(--radius-md)" }}
+            >
+              <div className="admin-pager-info">
+                Exibindo <strong>{(page - 1) * IMOB_PAGE_SIZE + 1}</strong>–
+                <strong>{Math.min(page * IMOB_PAGE_SIZE, filtered.length)}</strong> de{" "}
+                <strong>{filtered.length}</strong>
+              </div>
+              <div className="admin-pager-actions">
                 <button
                   type="button"
-                  className="icon-action icon-action--danger"
-                  onClick={() => remove(im.id)}
-                  aria-label={`Remover ${im.nome}`}
+                  className="admin-icon-btn"
+                  aria-label="Página anterior"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  <Trash2 size={14} strokeWidth={1.75} />
+                  <ChevronLeft size={18} strokeWidth={2} />
                 </button>
-              </li>
-            ))}
-          </ul>
+                <span className="admin-pager-page">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="admin-icon-btn"
+                  aria-label="Próxima página"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <ChevronRight size={18} strokeWidth={2} />
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
 
