@@ -22,31 +22,27 @@ import {
 } from "lucide-react";
 
 import {
+  useAwardCheckItems,
+  useDailyCheckItems,
+  usePremiacoesCategories,
+  useReplaceAwardCheckActivity,
+  useReplaceDailyCheckActivity,
+  useReplaceStandCheckActivity,
+  useStandCheckItems,
+} from "@/hooks/use-checklist";
+
+import {
   CHECKLIST_META,
   SKIN_ARQUITETO_THRESHOLD,
   type CheckItem,
   type ChecklistType,
   type ValidationLogEntry,
 } from "./check-data";
+import type { ReplaceAwardCheckActivityBody } from "./check-items-award-activity";
+import type { ReplaceDailyCheckActivityBody } from "./check-items-daily-activity";
+import { formatDayLabel, type ReplaceStandCheckActivityBody } from "./stand-check-activity";
 import { resolveLucideIcon } from "./stand-check-items";
-import { fetchPremiacoesCategories, type PremiacaoCategoryDTO } from "./premiacoes-categories";
-import {
-  fetchStandCheckItemsToday,
-  formatDayLabel,
-  replaceStandCheckActivity,
-  type ReplaceStandCheckActivityBody,
-} from "./stand-check-activity";
-import {
-  fetchDailyCheckItemsToday,
-  replaceDailyCheckActivity,
-  type ReplaceDailyCheckActivityBody,
-} from "./check-items-daily-activity";
-import {
-  fetchAwardCheckItemsToday,
-  replaceAwardCheckActivity,
-  type ReplaceAwardCheckActivityBody,
-} from "./check-items-award-activity";
-import { Toast, type ToastKind } from "./toast";
+import { Toast, type ToastKind } from "../../_components/toast";
 
 const TOAST_DURATION_MS = 3000;
 
@@ -61,6 +57,16 @@ type Props = {
 };
 
 type StateMap = Record<string, boolean>;
+
+/** Forma mínima compartilhada pelos 3 catálogos de check items (stand/daily/award). */
+type CheckRow = {
+  id: string;
+  code: string;
+  label: string;
+  icon_name: string;
+  is_checked: boolean;
+  divergent: boolean;
+};
 
 const SUB_TABS: {
   id: ChecklistType;
@@ -84,217 +90,123 @@ function countDone(map: StateMap, items: CheckItem[]): number {
   return items.reduce((n, item) => n + (map[item.id] ? 1 : 0), 0);
 }
 
+function errMsg(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function toRenderItems(rows: CheckRow[]): CheckItem[] {
+  return rows.map((it) => ({
+    id: it.code,
+    label: it.label,
+    Icon: resolveLucideIcon(it.icon_name),
+  }));
+}
+
+function toIdMap(rows: CheckRow[]): Record<string, string> {
+  return Object.fromEntries(rows.map((it) => [it.code, it.id]));
+}
+
+function toDivergentMap(rows: CheckRow[]): StateMap {
+  return Object.fromEntries(rows.map((it) => [it.code, it.divergent]));
+}
+
+function toChecksMap(rows: CheckRow[]): StateMap {
+  return Object.fromEntries(rows.map((it) => [it.code, it.is_checked]));
+}
+
 export function CheckTab({ comercialName, empreendimentoIds }: Props) {
   // Todos os estandes selecionados são lidos juntos e o backend devolve a
   // view já mesclada (ALL-must-agree) + flag `divergent` por item. PUT
   // escreve uma linha por estande via fan-out no service.
   const empreendimentoId = empreendimentoIds[0] ?? null;
-  // Memoiza pra que o eslint deps + useEffect comparem por referência estável
-  // quando a prop não mudou de fato.
-  const empreendimentoIdsKey = empreendimentoIds.join(",");
-  const selectedEmpIds = useMemo<number[]>(
-    () => empreendimentoIds,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [empreendimentoIdsKey],
-  );
 
   const [sub, setSub] = useState<ChecklistType>("base");
-
   const [log, setLog] = useState<ValidationLogEntry[]>([]);
-
-  // Estande (base) — granularidade DIÁRIA, uma linha por
-  // (empreendimento_id, day) com items[] em JSONB. O GET unificado já
-  // devolve o catálogo mesclado entre os estandes selecionados.
-  const [baseItems, setBaseItems] = useState<CheckItem[]>([]);
-  const [baseChecks, setBaseChecks] = useState<StateMap>({});
-  const [baseDivergent, setBaseDivergent] = useState<StateMap>({});
-  const [baseItemIds, setBaseItemIds] = useState<Record<string, string>>({});
-  const [baseDay, setBaseDay] = useState<string | null>(null);
-  const [baseLoading, setBaseLoading] = useState(true);
-  const [baseError, setBaseError] = useState<string | null>(null);
-  const [baseSaveError, setBaseSaveError] = useState<string | null>(null);
-  const [baseSaving, setBaseSaving] = useState(false);
-
-  // Rotina Diária — mesma arquitetura do estande, paths /check-items-daily.
-  const [diarioItems, setDiarioItems] = useState<CheckItem[]>([]);
-  const [diarioMap, setDiarioMap] = useState<StateMap>({});
-  const [diarioDivergent, setDiarioDivergent] = useState<StateMap>({});
-  const [diarioItemIds, setDiarioItemIds] = useState<Record<string, string>>({});
-  const [diarioDay, setDiarioDay] = useState<string | null>(null);
-  const [diarioLoading, setDiarioLoading] = useState(true);
-  const [diarioError, setDiarioError] = useState<string | null>(null);
-  const [diarioSaveError, setDiarioSaveError] = useState<string | null>(null);
-  const [diarioSaving, setDiarioSaving] = useState(false);
-
-  // Premiação — agora é per-estande (não mais pessoal). Mesma arquitetura
-  // de Base/Rotina, paths /check-items-award.
-  const [premItems, setPremItems] = useState<CheckItem[]>([]);
-  const [premMap, setPremMap] = useState<StateMap>({});
-  const [premDivergent, setPremDivergent] = useState<StateMap>({});
-  const [premItemIds, setPremItemIds] = useState<Record<string, string>>({});
-  const [premDay, setPremDay] = useState<string | null>(null);
-  const [premLoading, setPremLoading] = useState(true);
-  const [premError, setPremError] = useState<string | null>(null);
-  const [premSaveError, setPremSaveError] = useState<string | null>(null);
-  const [premSaving, setPremSaving] = useState(false);
-
-  // Premiação · cards de categoria (Indicações/Pastas/Vendas/Corujão...).
-  // Vêm do catálogo `premiacoes_categories` por empreendimento.
-  const [premCategories, setPremCategories] = useState<PremiacaoCategoryDTO[]>([]);
-  const [premCategoriesError, setPremCategoriesError] = useState<string | null>(null);
-
   const [toast, setToast] = useState<{
     kind: ToastKind;
     message: string;
     key: number;
   } | null>(null);
 
-  // user_id é resolvido pelo backend via JWT — o front não passa nada.
-  // O nome digitado no topo é só rótulo do log local.
+  // Estado editável dos checkboxes — semeado a partir da query e alterado pelo
+  // usuário até clicar em "Validar".
+  const [baseChecks, setBaseChecks] = useState<StateMap>({});
+  const [diarioMap, setDiarioMap] = useState<StateMap>({});
+  const [premMap, setPremMap] = useState<StateMap>({});
 
-  useEffect(() => {
-    if (sub !== "base") return;
+  const [baseSaveError, setBaseSaveError] = useState<string | null>(null);
+  const [diarioSaveError, setDiarioSaveError] = useState<string | null>(null);
+  const [premSaveError, setPremSaveError] = useState<string | null>(null);
 
-    queueMicrotask(() => {
-      setBaseLoading(true);
-    });
-    const ctrl = new AbortController();
-    fetchStandCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
-      .then((items) => {
-        const renderItems: CheckItem[] = [];
-        const checks: StateMap = {};
-        const divergent: StateMap = {};
-        const ids: Record<string, string> = {};
-        for (const it of items) {
-          renderItems.push({
-            id: it.code,
-            label: it.label,
-            Icon: resolveLucideIcon(it.icon_name),
-          });
-          checks[it.code] = it.is_checked;
-          divergent[it.code] = it.divergent;
-          ids[it.code] = it.id;
-        }
-        setBaseItems(renderItems);
-        setBaseChecks(checks);
-        setBaseDivergent(divergent);
-        setBaseItemIds(ids);
-        setBaseDay(new Date().toISOString().slice(0, 10));
-        setBaseError(null);
-        setBaseSaveError(null);
-        setBaseLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setBaseError(err instanceof Error ? err.message : "Erro ao carregar itens");
-        setBaseLoading(false);
-      });
+  // Reads — só a sub-tab ativa fica habilitada.
+  const baseQuery = useStandCheckItems(empreendimentoIds, sub === "base");
+  const diarioQuery = useDailyCheckItems(empreendimentoIds, sub === "diario");
+  const premQuery = useAwardCheckItems(empreendimentoIds, sub === "premiacao");
+  const premCategoriesQuery = usePremiacoesCategories(empreendimentoId, sub === "premiacao");
 
-    return () => ctrl.abort();
-  }, [sub, selectedEmpIds]);
+  // Writes — PUT replace-all; em caso de sucesso a query do read é invalidada.
+  const baseMutation = useReplaceStandCheckActivity();
+  const diarioMutation = useReplaceDailyCheckActivity();
+  const premMutation = useReplaceAwardCheckActivity();
 
-  useEffect(() => {
-    if (sub !== "diario") return;
-
-    queueMicrotask(() => {
-      setDiarioLoading(true);
-    });
-    const ctrl = new AbortController();
-    fetchDailyCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
-      .then((items) => {
-        const renderItems: CheckItem[] = [];
-        const checks: StateMap = {};
-        const divergent: StateMap = {};
-        const ids: Record<string, string> = {};
-        for (const it of items) {
-          renderItems.push({
-            id: it.code,
-            label: it.label,
-            Icon: resolveLucideIcon(it.icon_name),
-          });
-          checks[it.code] = it.is_checked;
-          divergent[it.code] = it.divergent;
-          ids[it.code] = it.id;
-        }
-        setDiarioItems(renderItems);
-        setDiarioMap(checks);
-        setDiarioDivergent(divergent);
-        setDiarioItemIds(ids);
-        setDiarioDay(new Date().toISOString().slice(0, 10));
-        setDiarioError(null);
-        setDiarioSaveError(null);
-        setDiarioLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setDiarioError(err instanceof Error ? err.message : "Erro ao carregar itens");
-        setDiarioLoading(false);
-      });
-
-    return () => ctrl.abort();
-  }, [sub, selectedEmpIds]);
-
-  useEffect(() => {
-    if (sub !== "premiacao") return;
-    if (empreendimentoId == null) return;
-    const ctrl = new AbortController();
-    fetchPremiacoesCategories(empreendimentoId, ctrl.signal)
-      .then((cats) => {
-        setPremCategories(cats ?? []);
-        setPremCategoriesError(null);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setPremCategoriesError(
-          err instanceof Error ? err.message : "Erro ao carregar categorias de premiação",
-        );
-      });
-    return () => ctrl.abort();
-  }, [sub, empreendimentoId]);
-
-  useEffect(() => {
-    if (sub !== "premiacao") return;
-
-    const ctrl = new AbortController();
-    fetchAwardCheckItemsToday(selectedEmpIds.length > 0 ? selectedEmpIds : null, ctrl.signal)
-      .then((items) => {
-        const renderItems: CheckItem[] = [];
-        const checks: StateMap = {};
-        const divergent: StateMap = {};
-        const ids: Record<string, string> = {};
-        for (const it of items) {
-          renderItems.push({
-            id: it.code,
-            label: it.label,
-            Icon: resolveLucideIcon(it.icon_name),
-          });
-          checks[it.code] = it.is_checked;
-          divergent[it.code] = it.divergent;
-          ids[it.code] = it.id;
-        }
-        setPremItems(renderItems);
-        setPremMap(checks);
-        setPremDivergent(divergent);
-        setPremItemIds(ids);
-        setPremDay(new Date().toISOString().slice(0, 10));
-        setPremError(null);
-        setPremSaveError(null);
-        setPremLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setPremError(err instanceof Error ? err.message : "Erro ao carregar itens");
-        setPremLoading(false);
-      });
-
-    return () => ctrl.abort();
-  }, [sub, selectedEmpIds]);
+  // Re-semeia o estado editável quando a query carrega ou revalida. Padrão
+  // render-phase do React (setState durante render, sem ciclo de efeito):
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [baseSeed, setBaseSeed] = useState<unknown>(undefined);
+  if (baseQuery.data && baseQuery.data !== baseSeed) {
+    setBaseSeed(baseQuery.data);
+    setBaseChecks(toChecksMap(baseQuery.data));
+  }
+  const [diarioSeed, setDiarioSeed] = useState<unknown>(undefined);
+  if (diarioQuery.data && diarioQuery.data !== diarioSeed) {
+    setDiarioSeed(diarioQuery.data);
+    setDiarioMap(toChecksMap(diarioQuery.data));
+  }
+  const [premSeed, setPremSeed] = useState<unknown>(undefined);
+  if (premQuery.data && premQuery.data !== premSeed) {
+    setPremSeed(premQuery.data);
+    setPremMap(toChecksMap(premQuery.data));
+  }
 
   useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  // Derivados das queries (catálogo, ids e divergência são server-side).
+  const baseItems = useMemo(() => toRenderItems(baseQuery.data ?? []), [baseQuery.data]);
+  const baseItemIds = useMemo(() => toIdMap(baseQuery.data ?? []), [baseQuery.data]);
+  const baseDivergent = useMemo(() => toDivergentMap(baseQuery.data ?? []), [baseQuery.data]);
+  const diarioItems = useMemo(() => toRenderItems(diarioQuery.data ?? []), [diarioQuery.data]);
+  const diarioItemIds = useMemo(() => toIdMap(diarioQuery.data ?? []), [diarioQuery.data]);
+  const diarioDivergent = useMemo(() => toDivergentMap(diarioQuery.data ?? []), [diarioQuery.data]);
+  const premItems = useMemo(() => toRenderItems(premQuery.data ?? []), [premQuery.data]);
+  const premItemIds = useMemo(() => toIdMap(premQuery.data ?? []), [premQuery.data]);
+  const premDivergent = useMemo(() => toDivergentMap(premQuery.data ?? []), [premQuery.data]);
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const baseDay = baseQuery.data ? todayIso : null;
+  const diarioDay = diarioQuery.data ? todayIso : null;
+  const premDay = premQuery.data ? todayIso : null;
+
+  const baseLoading = baseQuery.isLoading;
+  const diarioLoading = diarioQuery.isLoading;
+  const premLoading = premQuery.isLoading;
+  const baseError = baseQuery.isError ? errMsg(baseQuery.error, "Erro ao carregar itens") : null;
+  const diarioError = diarioQuery.isError
+    ? errMsg(diarioQuery.error, "Erro ao carregar itens")
+    : null;
+  const premError = premQuery.isError ? errMsg(premQuery.error, "Erro ao carregar itens") : null;
+
+  const baseSaving = baseMutation.isPending;
+  const diarioSaving = diarioMutation.isPending;
+  const premSaving = premMutation.isPending;
+
+  const premCategories = premCategoriesQuery.data ?? [];
+  const premCategoriesError = premCategoriesQuery.isError
+    ? errMsg(premCategoriesQuery.error, "Erro ao carregar categorias de premiação")
+    : null;
 
   const toggleBase = (code: string) => {
     // Apenas atualização visual — a persistência acontece no botão "Validar".
@@ -317,7 +229,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
   };
 
   const validateBase = async () => {
-    if (baseSaving) return;
+    if (baseMutation.isPending) return;
     if (empreendimentoId == null) {
       const msg = "Selecione um empreendimento válido para salvar o checklist do estande.";
       setBaseSaveError(msg);
@@ -338,50 +250,23 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
     }
 
     setBaseSaveError(null);
-    setBaseSaving(true);
-
     try {
-      const updated = await replaceStandCheckActivity({
+      await baseMutation.mutateAsync({
         empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
-
-      // Resincroniza com a visão mesclada devolvida pelo servidor (já com
-      // ALL-must-agree e divergent populados).
-      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
-      setBaseChecks((prev) => {
-        const next = { ...prev };
-        for (const item of baseItems) {
-          const itemId = baseItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.is_checked;
-        }
-        return next;
-      });
-      setBaseDivergent((prev) => {
-        const next = { ...prev };
-        for (const item of baseItems) {
-          const itemId = baseItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.divergent;
-        }
-        return next;
-      });
-      setBaseDay(updated.day.slice(0, 10));
+      // A invalidação do read resincroniza checks + divergent com a visão
+      // mesclada (ALL-must-agree) devolvida pelo servidor.
       showToast("success", "Checklist da base salvo com sucesso!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar checks";
+      const msg = errMsg(err, "Erro ao salvar checks");
       setBaseSaveError(msg);
       showToast("error", msg);
-    } finally {
-      setBaseSaving(false);
     }
   };
 
   const validateDiario = async () => {
-    if (diarioSaving) return;
+    if (diarioMutation.isPending) return;
     if (empreendimentoId == null) {
       const msg = "Selecione um empreendimento válido para salvar a rotina diária.";
       setDiarioSaveError(msg);
@@ -400,48 +285,21 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
     }
 
     setDiarioSaveError(null);
-    setDiarioSaving(true);
-
     try {
-      const updated = await replaceDailyCheckActivity({
+      await diarioMutation.mutateAsync({
         empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
-
-      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
-      setDiarioMap((prev) => {
-        const next = { ...prev };
-        for (const item of diarioItems) {
-          const itemId = diarioItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.is_checked;
-        }
-        return next;
-      });
-      setDiarioDivergent((prev) => {
-        const next = { ...prev };
-        for (const item of diarioItems) {
-          const itemId = diarioItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.divergent;
-        }
-        return next;
-      });
-      setDiarioDay(updated.day.slice(0, 10));
       showToast("success", "Rotina diária salva com sucesso!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar checks";
+      const msg = errMsg(err, "Erro ao salvar checks");
       setDiarioSaveError(msg);
       showToast("error", msg);
-    } finally {
-      setDiarioSaving(false);
     }
   };
 
   const validatePrem = async () => {
-    if (premSaving) return;
+    if (premMutation.isPending) return;
     if (empreendimentoId == null) {
       const msg = "Selecione um empreendimento válido para salvar a premiação.";
       setPremSaveError(msg);
@@ -460,43 +318,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
     }
 
     setPremSaveError(null);
-    setPremSaving(true);
-
     try {
-      const updated = await replaceAwardCheckActivity({
+      await premMutation.mutateAsync({
         empreendimento_ids: empreendimentoIds.length > 0 ? empreendimentoIds : [empreendimentoId],
         items: itemsBody,
       });
-
-      const byID = new Map(updated.items.map((e) => [e.item.id, e]));
-      setPremMap((prev) => {
-        const next = { ...prev };
-        for (const item of premItems) {
-          const itemId = premItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.is_checked;
-        }
-        return next;
-      });
-      setPremDivergent((prev) => {
-        const next = { ...prev };
-        for (const item of premItems) {
-          const itemId = premItemIds[item.id];
-          if (!itemId) continue;
-          const entry = byID.get(itemId);
-          if (entry) next[item.id] = entry.divergent;
-        }
-        return next;
-      });
-      setPremDay(updated.day.slice(0, 10));
       showToast("success", "Premiação salva com sucesso!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar checks";
+      const msg = errMsg(err, "Erro ao salvar checks");
       setPremSaveError(msg);
       showToast("error", msg);
-    } finally {
-      setPremSaving(false);
     }
   };
 

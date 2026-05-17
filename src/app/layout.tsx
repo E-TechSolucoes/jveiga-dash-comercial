@@ -4,6 +4,7 @@ import { Fraunces, JetBrains_Mono, Outfit } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 
 import "./globals.css";
+import { Providers } from "./providers";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -44,7 +45,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+        <Providers>
+          <AuthProvider>{children}</AuthProvider>
+        </Providers>
       </body>
     </html>
   );

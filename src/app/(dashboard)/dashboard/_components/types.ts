@@ -36,6 +36,13 @@ export type PerformanceNumbers = {
   vgvPeriodo: number; // absolute (BRL)
 };
 
+export type PastasKpis = {
+  total: number;
+  emAndamento: number;
+  concluidas: number;
+  distratadas: number;
+};
+
 export type StageStatus = "ok" | "warn" | "bad";
 
 export function pct(real: number, target: number): number {

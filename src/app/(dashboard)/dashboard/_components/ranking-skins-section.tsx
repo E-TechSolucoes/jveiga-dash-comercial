@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Lock, Sword, Trophy, Users, type LucideIcon } from "lucide-react";
 
-import {
-  getArsenalWeek,
-  weekStartFromSemana,
-  type ArsenalBroker,
-  type ArsenalWeek,
-} from "@/lib/arsenal/api";
+import { useArsenalWeek } from "@/hooks/use-arsenal";
+import { weekStartFromSemana, type ArsenalBroker } from "@/lib/arsenal/api";
 import type { Nivel } from "./arsenal-data";
 
 const NIVEL_ACCENT: Record<Nivel, "blue" | "violet" | "emerald" | "amber"> = {
@@ -66,11 +62,6 @@ type Props = {
 };
 
 export function RankingSkinsSection({ semana, empreendimentoIds }: Props) {
-  const [week, setWeek] = useState<ArsenalWeek | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const reqIdRef = useRef(0);
-
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
@@ -84,33 +75,16 @@ export function RankingSkinsSection({ semana, empreendimentoIds }: Props) {
 
   // Backend single-id: usamos o primeiro empreendimento selecionado.
   const empreendimentoId = empreendimentoIds[0] ?? null;
-  const idsKey = empreendimentoIds.join(",");
 
-  useEffect(() => {
-    if (!weekStart || empreendimentoId == null) return;
-    const ac = new AbortController();
-    queueMicrotask(() => {
-      const id = ++reqIdRef.current;
-      setLoading(true);
-      setError(null);
-      void (async () => {
-        try {
-          const data = await getArsenalWeek(weekStart, empreendimentoId);
-          if (ac.signal.aborted || id !== reqIdRef.current) return;
-          setWeek(data);
-        } catch (e: unknown) {
-          if (ac.signal.aborted || id !== reqIdRef.current) return;
-          setWeek(null);
-          setError(e instanceof Error ? e.message : "Falha ao carregar arsenal.");
-        } finally {
-          if (!ac.signal.aborted && id === reqIdRef.current) setLoading(false);
-        }
-      })();
-    });
-    return () => ac.abort();
-  }, [weekStart, empreendimentoId, idsKey]);
+  const weekQuery = useArsenalWeek(weekStart ?? "", empreendimentoId);
+  const loading = !mounted || weekQuery.isLoading;
+  const error = weekQuery.isError
+    ? weekQuery.error instanceof Error
+      ? weekQuery.error.message
+      : "Falha ao carregar arsenal."
+    : null;
 
-  const effectiveWeek = weekStart && empreendimentoId != null ? week : null;
+  const effectiveWeek = weekStart && empreendimentoId != null ? (weekQuery.data ?? null) : null;
   const brokers = useMemo<ArsenalBroker[]>(() => effectiveWeek?.brokers ?? [], [effectiveWeek]);
   const validations = effectiveWeek?.validations ?? 0;
   const weekLabel = effectiveWeek ? effectiveWeek.week_number : semana;

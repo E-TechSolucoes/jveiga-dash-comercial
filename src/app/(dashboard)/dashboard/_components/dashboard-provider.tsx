@@ -1,31 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { apiFetch, useAuth } from "@/lib/auth";
-import type { SalesPlanByMonth } from "@/lib/dashboard/sales-plans";
+import { useFunil, usePastasKpis, useSalesPlan, useTaxas } from "@/hooks/use-dashboard";
+import { useAuth } from "@/lib/auth";
 
 import empreendimentosData from "../../../../../empreendimentos.json";
-import { ArsenalTab } from "./arsenal-tab";
-import { CascadeCard } from "./cascade-card";
-import { CheckTab } from "./check-tab";
-import { ConhecimentoTab } from "./conhecimento-tab";
-import { FunnelSection } from "./funnel-section";
-import { ImobTab } from "./imob-tab";
-import { OutboundTab } from "./outbound-tab";
-import { PastasTab, type PastasKpis } from "./pastas-tab";
-import { RankingSkinsSection } from "./ranking-skins-section";
-import { RecepTab } from "./recep-tab";
-import { RegrasOuroCard } from "./regras-ouro-card";
+import type { GoalBreakdownEntry } from "./cascade-card";
 import { TabsNav } from "./tabs-nav";
 import { Topbar } from "./topbar";
 import { XpBar } from "./xp-bar";
 import type {
   EmpresaOption,
   FunnelNumbers,
+  PastasKpis,
   PerformanceNumbers,
   PeriodoId,
-  TabId,
   Taxas,
 } from "./types";
 
@@ -83,6 +73,8 @@ const STORAGE_CUSTOM_TO = "dash.customTo";
 const LEGACY_STORAGE_EMPRESA = "dash.empresa";
 
 const PERIODOS_VALIDOS: readonly PeriodoId[] = ["semana", "mes", "ultimo_mes", "custom"];
+
+const TAXAS_DEFAULT: Taxas = { lv: 0.15, vp: 0.2, pv: 0.5 };
 
 function readEmpresasCookie(): string[] | null {
   if (typeof document === "undefined") return null;
@@ -175,7 +167,40 @@ function computePeriodBounds(periodo: PeriodoId, customFrom: string, customTo: s
   return { from: toIsoDate(from), to: toIsoDate(to) };
 }
 
-export function DashboardShell() {
+type PeriodBounds = { from: string; to: string } | null;
+
+type DashboardContextValue = {
+  comercialName: string;
+  empresasNomes: string[];
+  empresasCodigos: string[];
+  empreendimentoIds: number[];
+  periodBounds: PeriodBounds;
+  empresasKey: string;
+  semana: number;
+  setSemana: (next: number) => void;
+  meta: number;
+  handleMetaChange: (v: number) => void;
+  taxas: Taxas;
+  real: FunnelNumbers;
+  performance: PerformanceNumbers;
+  goalsBreakdown: GoalBreakdownEntry[];
+  funnelLoading: boolean;
+  pastasKpis: PastasKpis | null;
+  pastasLoading: boolean;
+  pastasError: string | null;
+};
+
+const DashboardContext = createContext<DashboardContextValue | null>(null);
+
+export function useDashboardData(): DashboardContextValue {
+  const ctx = useContext(DashboardContext);
+  if (!ctx) {
+    throw new Error("useDashboardData must be used within <DashboardProvider>");
+  }
+  return ctx;
+}
+
+export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   const persistedFilters = useMemo(() => {
     const fallbackEmpresas = EMPRESAS[0]?.value ? [EMPRESAS[0].value] : [];
@@ -244,38 +269,11 @@ export function DashboardShell() {
     }
   }, [empresasEfetivas, periodo, customFrom, customTo]);
 
-  // Navigation
-  const [activeTab, setActiveTab] = useState<TabId>("resumo");
-
-  // Meta / Conversions. `meta` é derivada em render (ver bloco abaixo de
-  // `metaFromGoals`); só o override do usuário e o snapshot da seleção atual
-  // ficam em state.
+  // Meta override do usuário (a meta-base vem da API de sales-plans).
   const [metaUserOverride, setMetaUserOverride] = useState<number | null>(null);
-  const [salesPlan, setSalesPlan] = useState<SalesPlanByMonth | null>(null);
-  // Taxas históricas (visitas/leads, pastas/visitas, vendas/pastas) por empreendimento,
-  // vindas de /api/dashboard/taxas. Os valores iniciais cobrem o primeiro render
-  // até a primeira resposta — nunca devem ser exibidos como "real".
-  const [taxas, setTaxas] = useState<Taxas>({ lv: 0.15, vp: 0.2, pv: 0.5 });
 
-  // Semana atual — compartilhada entre Resumo e Armas (arsenal)
+  // Semana atual — compartilhada entre Armas (arsenal) e Outbound.
   const [semana, setSemana] = useState(1);
-
-  const [real, setReal] = useState<FunnelNumbers>({
-    leads: 0,
-    visitas: 0,
-    pastas: 0,
-    vendas: 0,
-    vendasAcumuladoHistorico: 0,
-  });
-  const [funnelLoading, setFunnelLoading] = useState(true);
-  const [pastasKpis, setPastasKpis] = useState<PastasKpis | null>(null);
-  const [pastasLoading, setPastasLoading] = useState(false);
-  const [pastasError, setPastasError] = useState<string | null>(null);
-  const [performance, setPerformance] = useState<PerformanceNumbers>({
-    corretores: 24,
-    vgvMedio: 0,
-    vgvPeriodo: 0,
-  });
 
   // Surface-level gamification values — placeholders until the remaining tabs exist.
   const skinsUnlocked = 1;
@@ -321,41 +319,26 @@ export function DashboardShell() {
 
   // Keys evitam re-render loops quando arrays trocam de identidade sem mudar conteúdo.
   const empresasNomesKey = empresasNomes.join("||");
-  const empresasCodigosKey = empresasCodigos.join(",");
   const empreendimentoIdsKey = empreendimentoIds.join(",");
 
   // Snapshot da seleção do último commit — usado pra invalidar `metaUserOverride`
   // quando a seleção muda (padrão render-phase, ver bloco após `metaFromGoals`).
   const [prevSelectionKey, setPrevSelectionKey] = useState(empreendimentoIdsKey);
 
-  const currentMonthKey = useMemo(() => {
+  const { currentYear, currentMonth } = useMemo(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${d.getMonth() + 1}`;
+    return { currentYear: d.getFullYear(), currentMonth: d.getMonth() + 1 };
   }, []);
 
-  useEffect(() => {
-    const ac = new AbortController();
-    const [yearStr, monthStr] = currentMonthKey.split("-");
-    const params = new URLSearchParams({ year: yearStr, month: monthStr });
-    void (async () => {
-      try {
-        const data = await apiFetch<SalesPlanByMonth>(
-          `/api/v1/sales-plans/by-month?${params.toString()}`,
-          { signal: ac.signal, cache: "no-store" },
-        );
-        if (ac.signal.aborted) return;
-        setSalesPlan(data);
-      } catch {
-        // aborted on unmount / month rollover, ou erro upstream — apiFetch já
-        // cuida de 401 redirecionando pra /login.
-        if (!ac.signal.aborted) setSalesPlan(null);
-      }
-    })();
-    return () =>
-      ac.abort(new DOMException("Superseded by newer sales-plans request", "AbortError"));
-  }, [currentMonthKey]);
+  // ── Dados servidos por TanStack Query ────────────────────────────────────
+  const salesPlanQuery = useSalesPlan(currentYear, currentMonth);
+  const taxasQuery = useTaxas(empresasCodigos, empresasNomes);
+  const funilQuery = useFunil(empresasCodigos, empresasNomes, periodBounds);
+  const pastasQuery = usePastasKpis(empresasNomes, empresasCodigos, periodBounds);
 
-  const goalsBreakdown = useMemo(() => {
+  const salesPlan = salesPlanQuery.data ?? null;
+
+  const goalsBreakdown = useMemo<GoalBreakdownEntry[]>(() => {
     if (!salesPlan) return [];
     // O `empreendimento_id` que o upstream devolve não bate com o
     // `codigo_interno_do_empreendimento` do catálogo (Conceito Poá vira 18 lá e
@@ -388,179 +371,84 @@ export function DashboardShell() {
 
   const handleMetaChange = (v: number) => setMetaUserOverride(v);
 
-  // Taxas históricas (acumulado por empreendimento, sem filtro de data).
-  useEffect(() => {
-    if (empresasNomes.length === 0) return;
-    const ac = new AbortController();
-    void (async () => {
-      try {
-        const params = new URLSearchParams({
-          codigos: empresasCodigos.join(","),
-          nomes: empresasNomes.join("||"),
-        });
-        const res = await fetch(`/api/dashboard/taxas?${params.toString()}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          const body = await res.text().catch(() => "<no body>");
-          console.error("[taxas] non-OK", { status: res.status, body, url: params.toString() });
-          return;
-        }
-        const data = (await res.json()) as {
-          taxas?: { lv?: number; vp?: number; pv?: number };
-        };
-        if (ac.signal.aborted) return;
-        const t = data.taxas ?? {};
-        // Mantém o fallback corrente se a etapa anterior tiver zero histórico
-        // (taxa = 0 zera a cascata inteira via ceilSafe).
-        setTaxas((prev) => ({
-          lv: Number(t.lv) > 0 ? Number(t.lv) : prev.lv,
-          vp: Number(t.vp) > 0 ? Number(t.vp) : prev.vp,
-          pv: Number(t.pv) > 0 ? Number(t.pv) : prev.pv,
-        }));
-      } catch {
-        // aborted on selection change / unmount — ignore
-      }
-    })();
-    return () => ac.abort(new DOMException("Superseded by newer taxas request", "AbortError"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresasNomesKey, empresasCodigosKey]);
+  const taxas = taxasQuery.data ?? TAXAS_DEFAULT;
 
-  useEffect(() => {
-    if (empresasNomes.length === 0 || !periodBounds) {
-      queueMicrotask(() => {
-        setReal((prev) => ({
-          ...prev,
-          leads: 0,
-          visitas: 0,
-          vendas: 0,
-          vendasAcumuladoHistorico: 0,
-        }));
-        setPerformance((prev) => ({ ...prev, vgvMedio: 0, vgvPeriodo: 0 }));
-        setFunnelLoading(false);
-      });
-      return;
-    }
-    const ac = new AbortController();
-    void (async () => {
-      try {
-        setFunnelLoading(true);
-        const params = new URLSearchParams({
-          codigos: empresasCodigos.join(","),
-          nomes: empresasNomes.join("||"),
-          from: periodBounds.from,
-          to: periodBounds.to,
-        });
-        const res = await fetch(`/api/dashboard/funil?${params.toString()}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          const body = await res.text().catch(() => "<no body>");
-          console.error("[funil] non-OK", { status: res.status, body, url: params.toString() });
-          return;
-        }
-        const data = (await res.json()) as {
-          leads?: number;
-          visitas?: number;
-          vendas?: number;
-          vendasAcumuladoHistorico?: number;
-          ticketMedio?: number;
-          vgvPeriodo?: number;
-        };
-        if (ac.signal.aborted) return;
-        setReal((prev) => ({
-          ...prev,
-          leads: Number(data.leads ?? 0),
-          visitas: Number(data.visitas ?? 0),
-          vendas: Number(data.vendas ?? 0),
-          vendasAcumuladoHistorico: Number(data.vendasAcumuladoHistorico ?? 0),
-        }));
-        setPerformance((prev) => ({
-          ...prev,
-          vgvMedio: Number(data.ticketMedio ?? 0),
-          vgvPeriodo: Number(data.vgvPeriodo ?? 0),
-        }));
-      } catch {
-        // `fetch` rejects on `ac.abort()` (deps change / unmount); ignore.
-      } finally {
-        if (!ac.signal.aborted) setFunnelLoading(false);
-      }
-    })();
-    return () => ac.abort(new DOMException("Superseded by newer funnel request", "AbortError"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresasNomesKey, empresasCodigosKey, periodBounds]);
+  const funil = funilQuery.data;
+  const pastasKpis = pastasQuery.data ?? null;
 
-  useEffect(() => {
-    const ac = new AbortController();
+  const real = useMemo<FunnelNumbers>(
+    () => ({
+      leads: funil?.leads ?? 0,
+      visitas: funil?.visitas ?? 0,
+      pastas: pastasKpis?.total ?? 0,
+      vendas: funil?.vendas ?? 0,
+      vendasAcumuladoHistorico: funil?.vendasAcumuladoHistorico ?? 0,
+    }),
+    [funil, pastasKpis],
+  );
 
-    void (async () => {
-      if (ac.signal.aborted) return;
-      if (empresasNomes.length === 0 || !periodBounds) {
-        setPastasKpis(null);
-        setPastasError(null);
-        setPastasLoading(false);
-        setReal((prev) => ({ ...prev, pastas: 0 }));
-        return;
-      }
+  const performance = useMemo<PerformanceNumbers>(
+    () => ({
+      corretores: 24,
+      vgvMedio: funil?.ticketMedio ?? 0,
+      vgvPeriodo: funil?.vgvPeriodo ?? 0,
+    }),
+    [funil],
+  );
 
-      setPastasLoading(true);
-      setPastasError(null);
-      setPastasKpis(null);
-
-      try {
-        const params = new URLSearchParams({
-          nomes: empresasNomes.join("||"),
-          codigos: empresasCodigos.join(","),
-          from: periodBounds.from,
-          to: periodBounds.to,
-        });
-        const res = await fetch(`/api/dashboard/pastas?${params.toString()}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (ac.signal.aborted) return;
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          console.error("[pastas] non-OK", {
-            status: res.status,
-            body,
-            url: params.toString(),
-          });
-          setPastasKpis(null);
-          setPastasError(body?.error ?? "Não foi possível carregar os totais de pastas.");
-          setReal((prev) => ({ ...prev, pastas: 0 }));
-          return;
-        }
-        const data = (await res.json()) as Partial<PastasKpis>;
-        if (ac.signal.aborted) return;
-        const kpis: PastasKpis = {
-          total: Number(data.total ?? 0),
-          emAndamento: Number(data.emAndamento ?? 0),
-          concluidas: Number(data.concluidas ?? 0),
-          distratadas: Number(data.distratadas ?? 0),
-        };
-        setPastasKpis(kpis);
-        setPastasError(null);
-        setReal((prev) => ({ ...prev, pastas: kpis.total }));
-      } catch {
-        if (ac.signal.aborted) return;
-        setPastasKpis(null);
-        setPastasError("Não foi possível carregar os totais de pastas.");
-        setReal((prev) => ({ ...prev, pastas: 0 }));
-      } finally {
-        if (!ac.signal.aborted) setPastasLoading(false);
-      }
-    })();
-
-    return () => ac.abort(new DOMException("Superseded by newer pastas request", "AbortError"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresasNomesKey, empresasCodigosKey, periodBounds]);
+  const funnelLoading = funilQuery.isFetching;
+  const pastasLoading = pastasQuery.isFetching;
+  const pastasError = pastasQuery.isError
+    ? pastasQuery.error instanceof Error
+      ? pastasQuery.error.message
+      : "Não foi possível carregar os totais de pastas."
+    : null;
 
   // Sufixo passado pra `key=` em tabs com fetches dependentes do filtro,
   // garantindo remount limpo quando a seleção muda.
   const empresasKey = empresasEfetivas.join("|");
+
+  const contextValue = useMemo<DashboardContextValue>(
+    () => ({
+      comercialName,
+      empresasNomes,
+      empresasCodigos,
+      empreendimentoIds,
+      periodBounds,
+      empresasKey,
+      semana,
+      setSemana,
+      meta,
+      handleMetaChange,
+      taxas,
+      real,
+      performance,
+      goalsBreakdown,
+      funnelLoading,
+      pastasKpis,
+      pastasLoading,
+      pastasError,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      comercialName,
+      empresasNomesKey,
+      empresasCodigos,
+      empreendimentoIdsKey,
+      periodBounds,
+      empresasKey,
+      semana,
+      meta,
+      taxas,
+      real,
+      performance,
+      goalsBreakdown,
+      funnelLoading,
+      pastasKpis,
+      pastasLoading,
+      pastasError,
+    ],
+  );
 
   return (
     <div className="app">
@@ -587,71 +475,9 @@ export function DashboardShell() {
         </div>
 
         <XpBar level={level} pct={checklistPct} />
-        <TabsNav active={activeTab} onSelect={setActiveTab} />
+        <TabsNav />
 
-        <div className="tc" data-active={activeTab === "resumo"}>
-          <CascadeCard
-            semana={semana}
-            meta={meta}
-            onMetaChange={handleMetaChange}
-            taxas={taxas}
-            real={real}
-            goalsBreakdown={goalsBreakdown}
-          />
-          <FunnelSection
-            real={real}
-            metaVendas={meta}
-            performance={performance}
-            loading={funnelLoading}
-          />
-          <RankingSkinsSection semana={semana} empreendimentoIds={empreendimentoIds} />
-          <RegrasOuroCard />
-        </div>
-
-        <div className="tc" data-active={activeTab === "checklist"}>
-          <CheckTab comercialName={comercialName} empreendimentoIds={empreendimentoIds} />
-        </div>
-
-        <div className="tc" data-active={activeTab === "recep"}>
-          <RecepTab key={empresasKey} empreendimentosNomes={empresasNomes} />
-        </div>
-
-        <div className="tc" data-active={activeTab === "pastas"}>
-          <PastasTab
-            key={empresasKey}
-            semNome={empresasNomes.length === 0}
-            empresasNomes={empresasNomes}
-            empresasCodigos={empresasCodigos}
-            periodBounds={periodBounds}
-            loading={pastasLoading}
-            error={pastasError}
-            kpis={pastasKpis}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "arsenal"}>
-          <ArsenalTab
-            semana={semana}
-            onSemanaChange={setSemana}
-            empreendimentoIds={empreendimentoIds}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "outbound"}>
-          <OutboundTab
-            semana={semana}
-            onSemanaChange={setSemana}
-            empreendimentoIds={empreendimentoIds}
-          />
-        </div>
-
-        <div className="tc" data-active={activeTab === "imob"}>
-          <ImobTab />
-        </div>
-
-        <div className="tc" data-active={activeTab === "conhecimento"}>
-          <ConhecimentoTab />
-        </div>
+        <DashboardContext.Provider value={contextValue}>{children}</DashboardContext.Provider>
       </div>
     </div>
   );

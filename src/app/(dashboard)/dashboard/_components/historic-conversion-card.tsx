@@ -1,34 +1,9 @@
 "use client";
 
 import { ChevronDown, ChevronUp, History, Info, TrendingUp } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-export type HistoricConversionPayload = {
-  meta: {
-    empreendimento: string;
-    codigo_interno_dwh_leads: string;
-    leads_unicos_total?: number;
-    meses_com_lead?: number;
-    media_historica_mensal_leads?: number;
-    observacao_dados?: string;
-    filtros?: Record<string, string>;
-    metricas?: Record<string, string>;
-  };
-  por_mes: Array<{
-    mes: string;
-    leads: number;
-    visitas: number;
-    taxa_conversao_mensal_pct: number | null;
-    leads_acumulado: number;
-    visitas_acumulado: number;
-    taxa_conversao_acumulada_pct: number | null;
-  }>;
-};
-
-type LoadState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ok"; data: HistoricConversionPayload };
+import { useConversaoHistorica } from "@/hooks/use-dashboard";
 
 type Props = {
   codigoInterno: string;
@@ -41,85 +16,62 @@ const fmtPct = (n: number | null | undefined) =>
     ? "—"
     : `${n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`;
 
+function ConversionErrorCard({ nome, message }: { nome: string; message: string }) {
+  return (
+    <section className="historic-conv historic-conv--empty" aria-label="Conversão histórica">
+      <div className="historic-conv-head">
+        <div className="historic-conv-title">
+          <span className="historic-conv-ico" aria-hidden>
+            <History size={18} strokeWidth={2} />
+          </span>
+          <div>
+            <div className="historic-conv-h1">Conversão histórica (lead → visita)</div>
+            <div className="historic-conv-sub">{nome}</div>
+          </div>
+        </div>
+      </div>
+      <p className="historic-conv-msg">{message}</p>
+    </section>
+  );
+}
+
 export function HistoricConversionCard({ codigoInterno, nomeSelecionado }: Props) {
   const [collapsed, setCollapsed] = useState(true);
-  const [state, setState] = useState<LoadState>(() =>
-    codigoInterno
-      ? { status: "loading" }
-      : { status: "error", message: "Selecione um empreendimento." },
-  );
+  const codigo = codigoInterno.startsWith("sem-codigo-") ? "" : codigoInterno;
+  const query = useConversaoHistorica(codigo, codigoInterno ? nomeSelecionado : "");
 
-  useEffect(() => {
-    if (!codigoInterno) return;
-
-    const ac = new AbortController();
-
-    (async () => {
-      try {
-        const params = new URLSearchParams({
-          codigo: codigoInterno.startsWith("sem-codigo-") ? "" : codigoInterno,
-          nome: nomeSelecionado,
-        });
-        const res = await fetch(`/api/dashboard/conversao-historica?${params.toString()}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (ac.signal.aborted) return;
-        if (!res.ok) {
-          setState({ status: "error", message: "Não foi possível carregar os dados." });
-          return;
-        }
-        const data = (await res.json()) as HistoricConversionPayload;
-        if (ac.signal.aborted) return;
-        if (!data?.por_mes || !Array.isArray(data.por_mes)) {
-          setState({ status: "error", message: "Dados em formato inesperado." });
-          return;
-        }
-        setState({ status: "ok", data });
-      } catch (e) {
-        if ((e as Error).name === "AbortError" || ac.signal.aborted) return;
-        setState({ status: "error", message: "Falha ao carregar os dados." });
-      }
-    })();
-
-    return () => ac.abort();
-  }, [codigoInterno]);
-
+  const data = query.data;
   const resumo = useMemo(() => {
-    if (state.status !== "ok") return null;
-    const rows = state.data.por_mes;
-    if (!rows.length) return null;
+    const rows = data?.por_mes;
+    if (!rows || rows.length === 0) return null;
     const ultimo = rows[rows.length - 1];
-    const L = ultimo.leads_acumulado;
-    const V = ultimo.visitas_acumulado;
-    const taxa = ultimo.taxa_conversao_acumulada_pct;
-    return { L, V, taxa };
-  }, [state]);
+    return {
+      L: ultimo.leads_acumulado,
+      V: ultimo.visitas_acumulado,
+      taxa: ultimo.taxa_conversao_acumulada_pct,
+    };
+  }, [data]);
 
-  if (state.status === "loading") {
+  if (!codigoInterno) {
+    return <ConversionErrorCard nome={nomeSelecionado} message="Selecione um empreendimento." />;
+  }
+
+  if (query.isLoading) {
     return <HistoricConversionSkeleton />;
   }
 
-  if (state.status === "error") {
+  if (query.isError || !data || !Array.isArray(data.por_mes)) {
     return (
-      <section className="historic-conv historic-conv--empty" aria-label="Conversão histórica">
-        <div className="historic-conv-head">
-          <div className="historic-conv-title">
-            <span className="historic-conv-ico" aria-hidden>
-              <History size={18} strokeWidth={2} />
-            </span>
-            <div>
-              <div className="historic-conv-h1">Conversão histórica (lead → visita)</div>
-              <div className="historic-conv-sub">{nomeSelecionado}</div>
-            </div>
-          </div>
-        </div>
-        <p className="historic-conv-msg">{state.message}</p>
-      </section>
+      <ConversionErrorCard
+        nome={nomeSelecionado}
+        message={
+          query.isError ? "Não foi possível carregar os dados." : "Dados em formato inesperado."
+        }
+      />
     );
   }
 
-  const { meta, por_mes } = state.data;
+  const { meta, por_mes } = data;
   const nome = meta.empreendimento ?? nomeSelecionado;
   const mesesTabela = [...por_mes].reverse();
 
