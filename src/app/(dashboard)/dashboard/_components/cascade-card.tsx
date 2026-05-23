@@ -172,17 +172,19 @@ export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBrea
           </label>
           <input
             id="meta-vendas"
-            type="number"
-            min={1}
             value={meta}
-            onChange={(e) => onMetaChange(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(e) => onMetaChange(Number(e.target.value))}
           />
         </div>
       </div>
 
       <div className="cascade-row">
         {stages.map((stage, i) => (
-          <StepFragment key={stage.key} stage={stage} showArrow={i < stages.length - 1} />
+          <StepFragment
+            key={stage.key}
+            stage={stage}
+            next={i < stages.length - 1 ? stages[i + 1] : null}
+          />
         ))}
       </div>
 
@@ -194,13 +196,18 @@ export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBrea
   );
 }
 
-function StepFragment({ stage, showArrow }: { stage: StageDef; showArrow: boolean }) {
+function StepFragment({ stage, next }: { stage: StageDef; next: StageDef | null }) {
   return (
     <>
       <Stage label={stage.label} Icon={stage.Icon} real={stage.real} target={stage.target} />
-      {showArrow && (
+      {next && (
         <div className="stage-arrow" aria-hidden>
-          <ChevronRight size={20} strokeWidth={1.5} />
+          <span className="arrow-pct">
+            {stage.real > 0 ? `${pct(next.real, stage.real)}%` : "—"}
+          </span>
+          <span className="stage-arrow-icon">
+            <ChevronRight size={20} strokeWidth={2.2} />
+          </span>
         </div>
       )}
     </>
