@@ -141,10 +141,6 @@ export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBrea
             </span>
             Cascata da Meta — Semana {semana}
           </div>
-          <div className="cascade-sub">
-            Conversões: {(taxas.lv * 100).toFixed(0)}% lead→visita · {(taxas.vp * 100).toFixed(0)}%
-            visita→pasta · {(taxas.pv * 100).toFixed(0)}% pasta→venda
-          </div>
         </div>
         <div className="meta-edit">
           <label htmlFor="meta-vendas">
