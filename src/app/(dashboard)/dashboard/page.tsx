@@ -10,7 +10,6 @@ export default function ResumoPage() {
   const {
     semana,
     meta,
-    handleMetaChange,
     taxas,
     real,
     performance,
@@ -24,16 +23,9 @@ export default function ResumoPage() {
       <CascadeCard
         semana={semana}
         meta={meta}
-        onMetaChange={handleMetaChange}
         taxas={taxas}
         real={real}
         goalsBreakdown={goalsBreakdown}
-      />
-      <FunnelSection
-        real={real}
-        metaVendas={meta}
-        performance={performance}
-        loading={funnelLoading}
       />
       <RankingSkinsSection semana={semana} empreendimentoIds={empreendimentoIds} />
       <RegrasOuroCard />

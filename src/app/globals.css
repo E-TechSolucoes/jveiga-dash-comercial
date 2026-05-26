@@ -996,15 +996,15 @@ body {
   border-radius: 12px;
   padding: 6px 8px 6px 14px;
 }
-.meta-edit label {
+.meta-edit-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--ink-mute);
-  font-weight: 500;
+  color: #000;
+  font-weight: 700;
 }
-.meta-edit input {
+.meta-value {
   width: 62px;
   text-align: center;
   font-size: 15px;
@@ -1014,18 +1014,6 @@ body {
   border: 1px solid var(--blue-100);
   border-radius: 8px;
   padding: 6px 8px;
-  outline: none;
-  font-family: inherit;
-  -moz-appearance: textfield;
-}
-.meta-edit input::-webkit-outer-spin-button,
-.meta-edit input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.meta-edit input:focus-visible {
-  border-color: var(--blue-600);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .cascade-row {

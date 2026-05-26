@@ -33,7 +33,6 @@ export type GoalBreakdownEntry = {
 type Props = {
   semana: number;
   meta: number;
-  onMetaChange: (v: number) => void;
   taxas: Taxas;
   real: FunnelNumbers;
   goalsBreakdown?: GoalBreakdownEntry[];
@@ -80,7 +79,7 @@ function Stage({ label, Icon, real, target }: Omit<StageDef, "key">) {
   );
 }
 
-export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBreakdown }: Props) {
+export function CascadeCard({ semana, meta, taxas, real, goalsBreakdown }: Props) {
   const breakdown = goalsBreakdown ?? [];
   const showBreakdown = breakdown.length > 1;
   const breakdownTotal = breakdown.reduce((sum, g) => sum + g.value, 0);
@@ -143,7 +142,7 @@ export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBrea
           </div>
         </div>
         <div className="meta-edit">
-          <label htmlFor="meta-vendas">
+          <span className="meta-edit-label">
             Meta de vendas
             {showBreakdown && (
               <button type="button" className="meta-info" aria-label="Detalhes da meta">
@@ -165,12 +164,8 @@ export function CascadeCard({ semana, meta, onMetaChange, taxas, real, goalsBrea
                 </span>
               </button>
             )}
-          </label>
-          <input
-            id="meta-vendas"
-            value={meta}
-            onChange={(e) => onMetaChange(Number(e.target.value))}
-          />
+          </span>
+          <div className="meta-value">{fmt(meta)}</div>
         </div>
       </div>
 
