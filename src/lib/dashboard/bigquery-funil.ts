@@ -7,7 +7,8 @@ const DATASET = "dwh";
 const LEADS = `\`${PROJECT}.${DATASET}.Leads\``;
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
 const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
-const RESERVAS = `\`${PROJECT}.${DATASET}.Reservas\``;
+const RESERVAS_COMPLETAS = `\`${PROJECT}.${DATASET}.reservas_cabecalho_latest\``;
+const RESERVAS_DETALHES = `\`${PROJECT}.${DATASET}.reservas_detalhes_latest\``;
 
 let client: BigQuery | null = null;
 
@@ -36,7 +37,7 @@ export type FunnelPeriodPayload = {
   vendas: number;
   /** COUNT(Reservas) com data_envio_sienge preenchida, todo o histórico do empreendimento (filtro por idempreendimento/empreendimento). */
   vendasAcumuladoHistorico: number;
-  /** Média por venda no período: soma de (valor_do_contrato − unica_pos_obra_valor) ÷ nº de vendas (mesma base de Reservas do funil). */
+  /** Média por venda no período: soma de (valor_contrato − única pós-obra, séries PD em reservas_detalhes_latest) ÷ nº de vendas (mesma base de vendas do funil). */
   ticketMedio: number;
   /** Soma no período da mesma linha usada no ticket médio. */
   vgvPeriodo: number;
@@ -65,20 +66,6 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       query: `
       CREATE TEMP FUNCTION fold(s STRING) AS (
         REGEXP_REPLACE(NORMALIZE(UPPER(TRIM(IFNULL(s, ''))), NFD), r'\\pM', '')
-      );
-
-      -- Vendas no período: data de corte exclusivamente coluna data_envio_sienge (Sienge/BQ).
-      CREATE TEMP FUNCTION data_envio_sienge_para_date(x ANY TYPE) AS (
-        DATE(
-          COALESCE(
-            SAFE_CAST(x AS DATETIME),
-            DATETIME(SAFE_CAST(x AS TIMESTAMP)),
-            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
-            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(x AS STRING)), '')),
-            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(x AS STRING)), '')),
-            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(x AS STRING)), '')), TIME(0, 0, 0))
-          )
-        )
       );
 
       WITH params AS (
@@ -148,23 +135,31 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
           -- conseguimos casar por nome normalizado.
           AND fold(v.empreendimento) IN UNNEST(p.nomes_fold)
       ),
+      financas_por_reserva AS (
+        SELECT
+          rd.idreserva AS reserva,
+          SUM(
+            IF(
+              UPPER(IFNULL(s.sigla, '')) = 'PD',
+              SAFE_CAST(s.quantidade AS INT64) * IFNULL(s.valor, 0),
+              0
+            )
+          ) AS unica_pos_obra
+        FROM ${RESERVAS_DETALHES} rd,
+        UNNEST(IFNULL(rd.condicoes.series, [])) AS s
+        GROUP BY rd.idreserva
+      ),
       vendas_periodo AS (
         SELECT
-          COALESCE(
-            SAFE_CAST(r.data_envio_sienge AS DATETIME),
-            DATETIME(SAFE_CAST(r.data_envio_sienge AS TIMESTAMP)),
-            SAFE.PARSE_DATETIME('%Y-%m-%d %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
-            SAFE.PARSE_DATETIME('%Y-%m-%d', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
-            SAFE.PARSE_DATETIME('%d/%m/%Y %H:%M:%S', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')),
-            DATETIME(SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(r.data_envio_sienge AS STRING)), '')), TIME(0, 0, 0))
-          ) AS dt_envio,
-          IFNULL(r.valor_do_contrato, 0) - IFNULL(r.unica_pos_obra_valor, 0) AS vgv_linha
-        FROM ${RESERVAS} r
+          IFNULL(r.valor_contrato, 0) - IFNULL(fp.unica_pos_obra, 0) AS vgv_linha
+        FROM ${RESERVAS_COMPLETAS} r
+        LEFT JOIN financas_por_reserva fp ON fp.reserva = r.idreserva
         CROSS JOIN params p
-        WHERE r.data_envio_sienge IS NOT NULL
-          AND data_envio_sienge_para_date(r.data_envio_sienge) BETWEEN p.d_from AND p.d_to
+        WHERE fold(IFNULL(r.situacao, '')) IN ('VENDIDA', 'RECEBIDO/ENVIO SIENGE')
+          AND r.data_envio_sienge_dt IS NOT NULL
+          AND DATE(r.data_envio_sienge_dt) BETWEEN p.d_from AND p.d_to
           AND (
-            SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            SAFE_CAST(TRIM(CAST(r.idempreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
             OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)
           )
       ),
@@ -173,11 +168,12 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
       ),
       vendas_total_historico AS (
         SELECT COUNT(*) AS n
-        FROM ${RESERVAS} r
+        FROM ${RESERVAS_COMPLETAS} r
         CROSS JOIN params p
-        WHERE r.data_envio_sienge IS NOT NULL
+        WHERE fold(IFNULL(r.situacao, '')) IN ('VENDIDA', 'RECEBIDO/ENVIO SIENGE')
+          AND r.data_envio_sienge_dt IS NOT NULL
           AND (
-            SAFE_CAST(TRIM(CAST(r.codigo_interno_do_empreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
+            SAFE_CAST(TRIM(CAST(r.idempreendimento AS STRING)) AS INT64) IN UNNEST(p.ids)
             OR fold(r.empreendimento) IN UNNEST(p.nomes_fold)
           )
       ),
