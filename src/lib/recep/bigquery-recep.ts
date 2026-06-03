@@ -5,7 +5,7 @@ import { BigQuery } from "@google-cloud/bigquery";
 import empreendimentosCatalog from "../../../empreendimentos.json";
 
 import type { EmpreendimentoRef } from "./empreendimento-match";
-import { foldEmpreendimentoNome, resolveEmpreendimentoFromRows } from "./empreendimento-match";
+import { resolveEmpreendimentoFromRows } from "./empreendimento-match";
 
 type EmpreendimentoCatalogRow = { idempreendimento: number; empreendimento: string };
 
@@ -35,7 +35,6 @@ const DATASET = "dwh";
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
 /** Mesmo esquema que Visitas; fonte adicional agregada na Recepção. */
 const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
-const PLANTAO = `\`${PROJECT}.${DATASET}.Plantao\``;
 
 let client: BigQuery | null = null;
 
@@ -185,45 +184,13 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     totals: { visitasHoje: 0, visitasPeriodo: 0, historicDays: 14 },
   };
 
-  const foldKeys = new Set(trimmedAll.map(foldEmpreendimentoNome).filter((s) => s.length > 0));
-
-  const [plantaoRawUntyped] = await bq.query({
-    query: `
-      SELECT corretor, imobiliaria, period, empreendimento
-      FROM ${PLANTAO}
-      WHERE status = 'active'
-        AND time_removed IS NULL
-        AND time_entered >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)
-    `,
-  });
-  const plantaoRaw = plantaoRawUntyped as RecepPlantaoRow[];
-  const plantao = plantaoRaw.filter(
-    (p) => p.empreendimento && foldKeys.has(foldEmpreendimentoNome(p.empreendimento)),
-  );
-
-  const [plantaoHistRawUntyped] = await bq.query({
-    query: `
-      SELECT
-        corretor,
-        imobiliaria,
-        period,
-        empreendimento,
-        FORMAT_TIMESTAMP('%d/%m/%Y', time_entered, 'America/Sao_Paulo') AS data,
-        FORMAT_TIMESTAMP('%H:%M', time_entered, 'America/Sao_Paulo') AS entrada,
-        FORMAT_TIMESTAMP('%H:%M', time_removed, 'America/Sao_Paulo') AS saida
-      FROM ${PLANTAO}
-      WHERE time_removed IS NOT NULL
-        AND time_removed >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)
-      ORDER BY time_removed DESC
-    `,
-  });
-  const plantaoHistRaw = plantaoHistRawUntyped as RecepPlantaoHistoRow[];
-  const plantaoHistorico = plantaoHistRaw.filter(
-    (p) => p.empreendimento && foldKeys.has(foldEmpreendimentoNome(p.empreendimento)),
-  );
-
+  // Plantão (corretores no plantão + encerrados) migrou para o postgres
+  // (on_duty_brokers): a dash-comercial busca esses dados num endpoint próprio
+  // (/api/v1/on-duty-brokers/enriched) e classifica ativo/encerrado por horário
+  // no cliente. A tabela dwh.Plantao não é mais lida — os campos plantao/
+  // plantaoHistorico do payload ficam vazios apenas por compatibilidade.
   if (ids.length === 0) {
-    return { ...empty, plantao, plantaoHistorico };
+    return empty;
   }
 
   const idsParam = ids;
@@ -315,8 +282,8 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     nomesSelecionados: trimmedAll,
     nomeSelecionado,
     visitasHoje,
-    plantao,
-    plantaoHistorico,
+    plantao: [],
+    plantaoHistorico: [],
     historico,
     totals: {
       visitasHoje: visitasHoje.length,
@@ -328,8 +295,6 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     nomesSelecionados: trimmedAll,
     matched,
     visitasHojeCount: visitasHoje.length,
-    plantaoCount: plantao.length,
-    plantaoHistoricoCount: plantaoHistorico.length,
     historicoDays: historico.length,
     visitasPeriodo,
   });

@@ -13,6 +13,8 @@ import {
   type PastasListFilters,
 } from "@/lib/dashboard/api";
 
+import { listOnDutyBrokersEnriched } from "@/lib/on-duty-brokers/api";
+
 import { qk } from "./query-keys";
 
 type PeriodBounds = { from: string; to: string } | null;
@@ -87,6 +89,17 @@ export function useRecep(nomes: string[]) {
     queryKey: qk.recep(nomes.join("||")),
     queryFn: ({ signal }) => getRecep(nomes, signal),
     enabled: nomes.length > 0,
+  });
+}
+
+/** Plantão rows (corretor de plantão) enriched with imobiliária/empreendimento,
+ *  for the resolved empreendimento ids over the [from, to] window. The recep tab
+ *  buckets these into active vs. encerrado by São Paulo time. */
+export function useOnDutyBrokersEnriched(ids: number[], from: string, to: string) {
+  return useQuery({
+    queryKey: qk.onDutyEnriched(ids.join(","), from, to),
+    queryFn: () => listOnDutyBrokersEnriched({ empreendimento_ids: ids, from, to }),
+    enabled: ids.length > 0,
   });
 }
 

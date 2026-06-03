@@ -16,6 +16,8 @@ export const qk = {
     filters: string,
   ) => ["pastas-list", codigos, nomes, from, to, page, filters] as const,
   recep: (nomes: string) => ["recep", nomes] as const,
+  onDutyEnriched: (ids: string, from: string, to: string) =>
+    ["on-duty-enriched", ids, from, to] as const,
   conversaoHistorica: (codigo: string, nome: string) =>
     ["conversao-historica", codigo, nome] as const,
 

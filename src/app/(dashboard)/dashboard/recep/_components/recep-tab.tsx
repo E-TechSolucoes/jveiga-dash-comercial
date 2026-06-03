@@ -13,8 +13,9 @@ import {
   UserCheck,
 } from "lucide-react";
 
-import { useRecep } from "@/hooks/use-dashboard";
+import { useOnDutyBrokersEnriched, useRecep } from "@/hooks/use-dashboard";
 import type { RecepApiPayload } from "@/lib/dashboard/api";
+import type { OnDutyBrokerEnriched } from "@/lib/on-duty-brokers/types";
 
 type Visita = {
   hora: string;
@@ -90,6 +91,81 @@ function plantaoToCorretores(rows: RecepApiPayload["plantao"]): RecepCorretor[] 
   return [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
+/** Current wall-clock in America/Sao_Paulo: date as YYYY-MM-DD and hour 0–23.
+ *  Computed via Intl so it's correct regardless of the browser's timezone. */
+function spNow(): { date: string; hour: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")) };
+}
+
+/** Shifts a YYYY-MM-DD date back by `n` days (UTC arithmetic — DST-safe). */
+function spDateMinusDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - n);
+  const p2 = (x: number) => String(x).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${p2(dt.getUTCMonth() + 1)}-${p2(dt.getUTCDate())}`;
+}
+
+/** YYYY-MM-DD → DD/MM/YYYY (the format the table renders). */
+function ymdToBR(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ymd;
+}
+
+/** Normalizes the postgres period ("morning"/"afternoon") — and PT aliases — to
+ *  the "manha"/"tarde" tokens the existing table JSX checks against. */
+function normPeriod(p?: string | null): "manha" | "tarde" | "" {
+  const v = (p ?? "").toLowerCase();
+  if (v === "morning" || v === "manha" || v === "manhã") return "manha";
+  if (v === "afternoon" || v === "tarde") return "tarde";
+  return "";
+}
+
+/** A plantão is over by the clock (America/Sao_Paulo): any past day is over;
+ *  today's morning ends at 12:00, today's afternoon ends at 18:00. */
+function isOver(r: OnDutyBrokerEnriched, now: { date: string; hour: number }): boolean {
+  if (r.duty_date < now.date) return true; // string compare is safe for YYYY-MM-DD
+  if (r.duty_date > now.date) return false;
+  const per = normPeriod(r.period);
+  if (per === "manha") return now.hour >= 12;
+  if (per === "tarde") return now.hour >= 18;
+  return false;
+}
+
+/** Maps an enriched row into the active-plantão shape `plantaoToCorretores` reads. */
+function toLegacyPlantao(r: OnDutyBrokerEnriched): RecepApiPayload["plantao"][number] {
+  return {
+    corretor: r.field_broker_nome ?? null,
+    imobiliaria: r.imobiliaria ?? null,
+    period: normPeriod(r.period),
+    empreendimento: r.empreendimento_nome ?? null,
+  };
+}
+
+/** Maps an enriched row into the ended-plantão shape the "Plantões encerrados"
+ *  table reads (corretor, imobiliária, turno, data). entrada/saída are unused —
+ *  on_duty_brokers has no real entry/exit times. */
+function toLegacyHistorico(r: OnDutyBrokerEnriched): RecepApiPayload["plantaoHistorico"][number] {
+  return {
+    corretor: r.field_broker_nome ?? null,
+    imobiliaria: r.imobiliaria ?? null,
+    period: normPeriod(r.period),
+    empreendimento: r.empreendimento_nome ?? null,
+    data: ymdToBR(r.duty_date),
+    entrada: null,
+    saida: null,
+  };
+}
+
 export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: string[] }) {
   const nomesNorm = useMemo(
     () => empreendimentosNomes.map((s) => s.trim()).filter((s) => s.length > 0),
@@ -98,16 +174,41 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
 
   const query = useRecep(nomesNorm);
   const data: RecepApiPayload | null = query.data ?? null;
-  const loading = query.isLoading;
-  const error = query.isError
+
+  const visitasHoje = useMemo(() => (data ? mapVisitas(data.visitasHoje) : []), [data]);
+
+  // Plantão (corretores no plantão + encerrados) agora vem do postgres
+  // on_duty_brokers via o backend, filtrado pelos empreendimentos já resolvidos
+  // no payload da recepção. Classificamos ativo/encerrado pelo horário de São
+  // Paulo aqui no cliente: manhã encerra às 12:00, tarde encerra às 18:00.
+  const now = useMemo(() => spNow(), []);
+  const dutyIds = useMemo(
+    () =>
+      (data?.empreendimentosMatched ?? [])
+        .map((m) => m.id)
+        .filter((x): x is number => typeof x === "number"),
+    [data],
+  );
+  const dutyFrom = useMemo(() => spDateMinusDays(now.date, 14), [now.date]);
+  const dutyQuery = useOnDutyBrokersEnriched(dutyIds, dutyFrom, now.date);
+  const dutyRows = useMemo(() => dutyQuery.data?.items ?? [], [dutyQuery.data]);
+
+  const loading = query.isLoading || dutyQuery.isLoading;
+  const recepError = query.isError
     ? query.error instanceof Error
       ? query.error.message
       : "Falha ao carregar recepção."
     : null;
+  const error = recepError ?? (dutyQuery.isError ? "Falha ao carregar plantão." : null);
 
-  const visitasHoje = useMemo(() => (data ? mapVisitas(data.visitasHoje) : []), [data]);
-  const corretoresPlantao = useMemo(() => (data ? plantaoToCorretores(data.plantao) : []), [data]);
-  const plantaoHistorico = data?.plantaoHistorico ?? [];
+  const corretoresPlantao = useMemo(
+    () => plantaoToCorretores(dutyRows.filter((r) => !isOver(r, now)).map(toLegacyPlantao)),
+    [dutyRows, now],
+  );
+  const plantaoHistorico = useMemo(
+    () => dutyRows.filter((r) => isOver(r, now)).map(toLegacyHistorico),
+    [dutyRows, now],
+  );
   const historico = data?.historico ?? [];
 
   const plantaoManha = useMemo(
@@ -235,7 +336,8 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
               <UserCheck size={18} strokeWidth={2} /> Corretores no plantão
             </h2>
             <p className="data-card-sub">
-              Registros com status ativo em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+              Corretores escalados para hoje cujo turno ainda não encerrou (plantão /
+              on_duty_brokers).
             </p>
           </div>
         </header>
@@ -298,7 +400,8 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
               <History size={18} strokeWidth={2} /> Plantões encerrados
             </h2>
             <p className="data-card-sub">
-              Registros encerrados em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+              Plantões cujo turno já encerrou — manhã após 12:00, tarde após 18:00 (horário de São
+              Paulo) — nos últimos 14 dias.
             </p>
           </div>
         </header>
@@ -310,14 +413,12 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
                 <th>Imobiliária</th>
                 <th>Turno</th>
                 <th>Data</th>
-                <th>Entrada</th>
-                <th>Saída</th>
               </tr>
             </thead>
             <tbody>
               {plantaoHistorico.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="cell-mute">
+                  <td colSpan={4} className="cell-mute">
                     Nenhum plantão encerrado nos últimos 14 dias para este empreendimento.
                   </td>
                 </tr>
@@ -325,7 +426,7 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
                 plantaoHistorico.map((p, i) => {
                   const per = (p.period ?? "").toLowerCase();
                   return (
-                    <tr key={`${p.corretor ?? "—"}-${p.entrada ?? ""}-${i}`}>
+                    <tr key={`${p.corretor ?? "—"}-${p.data ?? ""}-${i}`}>
                       <td className="cell-strong">{(p.corretor ?? "").trim() || "—"}</td>
                       <td>
                         <span className="chip-soft" data-accent="blue">
@@ -346,8 +447,6 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
                         )}
                       </td>
                       <td>{(p.data ?? "").trim() || "—"}</td>
-                      <td className="cell-hora">{(p.entrada ?? "").trim() || "—"}</td>
-                      <td className="cell-hora">{(p.saida ?? "").trim() || "—"}</td>
                     </tr>
                   );
                 })
@@ -479,7 +578,8 @@ function RecepSkeleton() {
               <UserCheck size={18} strokeWidth={2} /> Corretores no plantão
             </h2>
             <p className="data-card-sub">
-              Registros com status ativo em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+              Corretores escalados para hoje cujo turno ainda não encerrou (plantão /
+              on_duty_brokers).
             </p>
           </div>
         </header>
@@ -497,7 +597,8 @@ function RecepSkeleton() {
               <History size={18} strokeWidth={2} /> Plantões encerrados
             </h2>
             <p className="data-card-sub">
-              Registros encerrados em Plantão (BigQuery dwh.Plantao, últimos 14 dias).
+              Plantões cujo turno já encerrou — manhã após 12:00, tarde após 18:00 (horário de São
+              Paulo) — nos últimos 14 dias.
             </p>
           </div>
         </header>
