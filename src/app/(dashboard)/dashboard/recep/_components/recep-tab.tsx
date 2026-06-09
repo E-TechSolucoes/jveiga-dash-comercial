@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   Gift,
@@ -166,6 +168,9 @@ function toLegacyHistorico(r: OnDutyBrokerEnriched): RecepApiPayload["plantaoHis
   };
 }
 
+/** Page size for the "Plantões encerrados" table (14-day window can be large in prod). */
+const ENCERRADOS_PAGE_SIZE = 10;
+
 export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: string[] }) {
   const nomesNorm = useMemo(
     () => empreendimentosNomes.map((s) => s.trim()).filter((s) => s.length > 0),
@@ -209,6 +214,31 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
     () => dutyRows.filter((r) => isOver(r, now)).map(toLegacyHistorico),
     [dutyRows, now],
   );
+
+  // Client-side pagination for "Plantões encerrados" — the 14-day window can be
+  // large in prod. Reset to page 1 when the empreendimento selection changes;
+  // clamp if the list shrank below the current page.
+  const [encerradosPage, setEncerradosPage] = useState(1);
+  const encerradosTotalPages = Math.max(
+    1,
+    Math.ceil(plantaoHistorico.length / ENCERRADOS_PAGE_SIZE),
+  );
+  const encerradosKey = nomesNorm.join("||");
+  const [prevEncerradosKey, setPrevEncerradosKey] = useState(encerradosKey);
+  if (encerradosKey !== prevEncerradosKey) {
+    setPrevEncerradosKey(encerradosKey);
+    setEncerradosPage(1);
+  }
+  if (encerradosPage > encerradosTotalPages) setEncerradosPage(encerradosTotalPages);
+  const encerradosPageItems = useMemo(
+    () =>
+      plantaoHistorico.slice(
+        (encerradosPage - 1) * ENCERRADOS_PAGE_SIZE,
+        encerradosPage * ENCERRADOS_PAGE_SIZE,
+      ),
+    [plantaoHistorico, encerradosPage],
+  );
+
   const historico = data?.historico ?? [];
 
   const plantaoManha = useMemo(
@@ -423,10 +453,12 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
                   </td>
                 </tr>
               ) : (
-                plantaoHistorico.map((p, i) => {
+                encerradosPageItems.map((p, i) => {
                   const per = (p.period ?? "").toLowerCase();
                   return (
-                    <tr key={`${p.corretor ?? "—"}-${p.data ?? ""}-${i}`}>
+                    <tr
+                      key={`${p.corretor ?? "—"}-${p.data ?? ""}-${(encerradosPage - 1) * ENCERRADOS_PAGE_SIZE + i}`}
+                    >
                       <td className="cell-strong">{(p.corretor ?? "").trim() || "—"}</td>
                       <td>
                         <span className="chip-soft" data-accent="blue">
@@ -454,6 +486,40 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
             </tbody>
           </table>
         </div>
+        {plantaoHistorico.length > ENCERRADOS_PAGE_SIZE && (
+          <div className="admin-pager" style={{ marginTop: 12, borderRadius: "var(--radius-md)" }}>
+            <div className="admin-pager-info">
+              Exibindo <strong>{(encerradosPage - 1) * ENCERRADOS_PAGE_SIZE + 1}</strong>–
+              <strong>
+                {Math.min(encerradosPage * ENCERRADOS_PAGE_SIZE, plantaoHistorico.length)}
+              </strong>{" "}
+              de <strong>{plantaoHistorico.length}</strong>
+            </div>
+            <div className="admin-pager-actions">
+              <button
+                type="button"
+                className="admin-icon-btn"
+                aria-label="Página anterior"
+                disabled={encerradosPage <= 1}
+                onClick={() => setEncerradosPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={18} strokeWidth={2} />
+              </button>
+              <span className="admin-pager-page">
+                {encerradosPage} / {encerradosTotalPages}
+              </span>
+              <button
+                type="button"
+                className="admin-icon-btn"
+                aria-label="Próxima página"
+                disabled={encerradosPage >= encerradosTotalPages}
+                onClick={() => setEncerradosPage((p) => Math.min(encerradosTotalPages, p + 1))}
+              >
+                <ChevronRight size={18} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="data-card">
