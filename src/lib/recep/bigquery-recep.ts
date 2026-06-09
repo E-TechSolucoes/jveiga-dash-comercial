@@ -109,6 +109,18 @@ export type RecepHistDia = {
   tarde: number;
 };
 
+/** Uma visita do histórico (últimos 14 dias), para expandir o dia e exportar o
+ *  CSV detalhado. `data` em DD/MM/YYYY (fuso São Paulo); `turno` em "manha"/"tarde"
+ *  (vazio quando o campo não está preenchido). */
+export type RecepHistVisitaRow = {
+  data: string;
+  turno: string;
+  hora: string;
+  cliente: string;
+  corretor: string;
+  origem: string;
+};
+
 export type RecepEmpreendimentoMatched = {
   id: number | null;
   nome: string | null;
@@ -129,6 +141,8 @@ export type RecepPayload = {
   plantao: RecepPlantaoRow[];
   plantaoHistorico: RecepPlantaoHistoRow[];
   historico: RecepHistDia[];
+  /** Visitas individuais dos últimos 14 dias (detalhe do histórico, com nomes). */
+  historicoVisitas: RecepHistVisitaRow[];
   totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
 };
 
@@ -181,6 +195,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     plantao: [],
     plantaoHistorico: [],
     historico: [],
+    historicoVisitas: [],
     totals: { visitasHoje: 0, visitasPeriodo: 0, historicDays: 14 },
   };
 
@@ -215,10 +230,13 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
   });
   const visitasHoje = visitasHojeRaw as RecepVisitaRow[];
 
+  // Detalhe por visita dos últimos 14 dias (Visitas ∪ public_visitas). O resumo
+  // diário (`historico`) é derivado destas linhas no JS abaixo, garantindo que as
+  // contagens dos badges e o detalhe expandido/CSV nunca divirjam.
   const [histRowsRaw] = await bq.query({
     query: `
       WITH base_visitas AS (
-        SELECT data, turno, empreendimento_id, created_at_utc
+        SELECT data, turno, hora, nome, corretor, origem, empreendimento_id, created_at_utc
         FROM ${VISITAS}
         WHERE empreendimento_id IN UNNEST(@ids)
           AND (
@@ -226,7 +244,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
             OR created_at_utc IS NOT NULL
           )
         UNION ALL
-        SELECT data, turno, empreendimento_id, created_at_utc
+        SELECT data, turno, hora, nome, corretor, origem, empreendimento_id, created_at_utc
         FROM ${PUBLIC_VISITAS}
         WHERE empreendimento_id IN UNNEST(@ids)
           AND (
@@ -237,11 +255,15 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
       parsed AS (
         SELECT
           ${sqlVisitaDateSaoPaulo("data", "created_at_utc")} AS d,
-          LOWER(TRIM(IFNULL(turno, ''))) AS turno_lc
+          LOWER(TRIM(IFNULL(turno, ''))) AS turno_lc,
+          CAST(hora AS STRING) AS hora,
+          nome AS cliente,
+          corretor,
+          origem
         FROM base_visitas
       ),
       filtered AS (
-        SELECT d, turno_lc
+        SELECT d, turno_lc, hora, cliente, corretor, origem
         FROM parsed
         WHERE d IS NOT NULL
           AND d BETWEEN DATE_SUB(CURRENT_DATE('America/Sao_Paulo'), INTERVAL 13 DAY)
@@ -249,31 +271,47 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
       )
       SELECT
         FORMAT_DATE('%d/%m/%Y', d) AS data_label,
-        COUNT(*) AS visitas,
-        COUNTIF(turno_lc = 'manha') AS manha,
-        COUNTIF(turno_lc = 'tarde') AS tarde
+        turno_lc,
+        hora,
+        cliente,
+        corretor,
+        origem
       FROM filtered
-      GROUP BY d
-      ORDER BY d DESC
+      ORDER BY d DESC, hora ASC
     `,
     params: { ids: idsParam },
     types: { ids: ["INT64"] },
   });
   const histRows = histRowsRaw as {
     data_label: string;
-    visitas: number | string;
-    manha: number | string;
-    tarde: number | string;
+    turno_lc: string | null;
+    hora: string | null;
+    cliente: string | null;
+    corretor: string | null;
+    origem: string | null;
   }[];
 
-  const historico: RecepHistDia[] = histRows.map((r) => ({
+  const historicoVisitas: RecepHistVisitaRow[] = histRows.map((r) => ({
     data: r.data_label,
-    visitas: Number(r.visitas ?? 0),
-    manha: Number(r.manha ?? 0),
-    tarde: Number(r.tarde ?? 0),
+    turno: (r.turno_lc ?? "").trim(),
+    hora: (r.hora ?? "").trim(),
+    cliente: (r.cliente ?? "").trim(),
+    corretor: (r.corretor ?? "").trim(),
+    origem: (r.origem ?? "").trim(),
   }));
 
-  const visitasPeriodo = historico.reduce((s, h) => s + h.visitas, 0);
+  // Resumo diário derivado do detalhe (preserva a ordem DESC por dia já vinda da query).
+  const histMap = new Map<string, RecepHistDia>();
+  for (const v of historicoVisitas) {
+    const dia = histMap.get(v.data) ?? { data: v.data, visitas: 0, manha: 0, tarde: 0 };
+    dia.visitas += 1;
+    if (v.turno === "manha") dia.manha += 1;
+    else if (v.turno === "tarde") dia.tarde += 1;
+    histMap.set(v.data, dia);
+  }
+  const historico: RecepHistDia[] = [...histMap.values()];
+
+  const visitasPeriodo = historicoVisitas.length;
 
   const payload: RecepPayload = {
     empreendimentoId,
@@ -285,6 +323,7 @@ export async function fetchRecepPayload(nomesSelecionados: string[]): Promise<Re
     plantao: [],
     plantaoHistorico: [],
     historico,
+    historicoVisitas,
     totals: {
       visitasHoje: visitasHoje.length,
       visitasPeriodo,

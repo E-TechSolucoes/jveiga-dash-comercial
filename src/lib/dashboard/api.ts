@@ -54,6 +54,16 @@ export type RecepHistDia = {
   tarde: number;
 };
 
+/** Uma visita do histórico (últimos 14 dias): detalhe expandível + linha do CSV. */
+export type RecepHistVisitaRow = {
+  data: string;
+  turno: string;
+  hora: string;
+  cliente: string;
+  corretor: string;
+  origem: string;
+};
+
 export type RecepEmpreendimentoMatched = {
   id: number | null;
   nome: string | null;
@@ -87,6 +97,7 @@ export type RecepApiPayload = {
     saida: string | null;
   }[];
   historico: RecepHistDia[];
+  historicoVisitas: RecepHistVisitaRow[];
   totals: { visitasHoje: number; visitasPeriodo: number; historicDays: number };
 };
 

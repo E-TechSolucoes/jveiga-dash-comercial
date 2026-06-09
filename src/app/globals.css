@@ -4848,6 +4848,44 @@ body {
   font-weight: 700;
 }
 
+/* Histórico expansível: cada dia abre uma sub-tabela com os nomes das visitas. */
+.hist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.hist-row--toggle {
+  width: 100%;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.hist-row--toggle:focus-visible {
+  outline: 2px solid var(--blue-400, #60a5fa);
+  outline-offset: 2px;
+}
+.hist-row-chevron {
+  color: var(--ink-mute);
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.hist-row-chevron[data-open] {
+  transform: rotate(180deg);
+}
+.hist-detail {
+  padding: 8px 4px 4px;
+}
+.hist-detail-empty {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.hist-detail-table {
+  font-size: 12px;
+}
+
 /* ============================================================
    ============= PASTAS ========================================
    ============================================================ */

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -52,12 +53,38 @@ function mapVisitas(rows: RecepApiPayload["visitasHoje"]): Visita[] {
   }));
 }
 
-/** Baixa o histórico de visitas como CSV (separador `;`, BOM UTF-8 para Excel pt-BR). */
-function exportHistoricoCsv(rows: RecepApiPayload["historico"]): void {
-  const header = ["Data", "Visitas", "Manhã", "Tarde"];
+/** Rótulo do turno para exibição/CSV ("manha" → "Manhã", "tarde" → "Tarde"). */
+function turnoLabel(turno: string): string {
+  const t = turno.toLowerCase();
+  if (t === "manha") return "Manhã";
+  if (t === "tarde") return "Tarde";
+  return "—";
+}
+
+/** Escapa um campo para CSV com separador `;` (aspas quando há `;`, aspas ou quebra). */
+function csvField(value: string | number): string {
+  const s = String(value ?? "");
+  return /[";\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+/** Baixa o histórico detalhado (uma linha por visita) como CSV — separador `;`,
+ *  BOM UTF-8 para Excel pt-BR. */
+function exportHistoricoDetalheCsv(rows: RecepApiPayload["historicoVisitas"]): void {
+  const header = ["Data", "Turno", "Hora", "Cliente", "Corretor", "Origem"];
   const lines = [
     header.join(";"),
-    ...rows.map((r) => [r.data, r.visitas, r.manha, r.tarde].join(";")),
+    ...rows.map((r) =>
+      [
+        r.data,
+        turnoLabel(r.turno),
+        r.hora || "—",
+        r.cliente || "—",
+        r.corretor || "—",
+        r.origem || "—",
+      ]
+        .map(csvField)
+        .join(";"),
+    ),
   ];
   const csv = `﻿${lines.join("\r\n")}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -186,7 +213,14 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
   // on_duty_brokers via o backend, filtrado pelos empreendimentos já resolvidos
   // no payload da recepção. Classificamos ativo/encerrado pelo horário de São
   // Paulo aqui no cliente: manhã encerra às 12:00, tarde encerra às 18:00.
-  const now = useMemo(() => spNow(), []);
+  // Relógio de São Paulo reavaliado a cada minuto: sem isso, um painel deixado
+  // aberto a manhã toda nunca cruzaria 12:00/18:00 e o turno encerrado de hoje só
+  // migraria para "Plantões encerrados" após um reload.
+  const [now, setNow] = useState(spNow);
+  useEffect(() => {
+    const id = setInterval(() => setNow(spNow()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const dutyIds = useMemo(
     () =>
       (data?.empreendimentosMatched ?? [])
@@ -206,8 +240,11 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
     : null;
   const error = recepError ?? (dutyQuery.isError ? "Falha ao carregar plantão." : null);
 
+  // "Corretores no plantão": todos os escalados de hoje (dia inteiro), sem validar
+  // se o turno já encerrou — a recepção precisa ver o plantão da manhã também à tarde.
   const corretoresPlantao = useMemo(
-    () => plantaoToCorretores(dutyRows.filter((r) => !isOver(r, now)).map(toLegacyPlantao)),
+    () =>
+      plantaoToCorretores(dutyRows.filter((r) => r.duty_date === now.date).map(toLegacyPlantao)),
     [dutyRows, now],
   );
   const plantaoHistorico = useMemo(
@@ -240,6 +277,28 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
   );
 
   const historico = data?.historico ?? [];
+  const historicoVisitas = useMemo(() => data?.historicoVisitas ?? [], [data]);
+
+  // Visitas do histórico agrupadas por dia (DD/MM/YYYY) para a expansão das linhas.
+  const visitasPorDia = useMemo(() => {
+    const map = new Map<string, typeof historicoVisitas>();
+    for (const v of historicoVisitas) {
+      const arr = map.get(v.data) ?? [];
+      arr.push(v);
+      map.set(v.data, arr);
+    }
+    return map;
+  }, [historicoVisitas]);
+
+  // Dias expandidos no card "Histórico — últimos dias".
+  const [diasAbertos, setDiasAbertos] = useState<Set<string>>(new Set());
+  const toggleDia = (dia: string) =>
+    setDiasAbertos((prev) => {
+      const next = new Set(prev);
+      if (next.has(dia)) next.delete(dia);
+      else next.add(dia);
+      return next;
+    });
 
   const plantaoManha = useMemo(
     () => corretoresPlantao.filter((c) => c.manha).length,
@@ -366,7 +425,7 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
               <UserCheck size={18} strokeWidth={2} /> Corretores no plantão
             </h2>
             <p className="data-card-sub">
-              Corretores escalados para hoje cujo turno ainda não encerrou (plantão /
+              Corretores escalados para hoje — dia inteiro, manhã e tarde (plantão /
               on_duty_brokers).
             </p>
           </div>
@@ -531,7 +590,7 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
             <p className="data-card-sub">
               Agregado por dia (turnos manhã/tarde conforme campo `turno`; fontes{" "}
               <code className="text-xs">Visitas</code> ∪{" "}
-              <code className="text-xs">public_visitas</code>).
+              <code className="text-xs">public_visitas</code>). Clique num dia para ver os nomes.
             </p>
           </div>
           <div className="data-card-head-actions">
@@ -542,8 +601,8 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={() => exportHistoricoCsv(historico)}
-              disabled={historico.length === 0}
+              onClick={() => exportHistoricoDetalheCsv(historicoVisitas)}
+              disabled={historicoVisitas.length === 0}
             >
               <Download size={14} strokeWidth={2} /> Exportar CSV
             </button>
@@ -553,23 +612,95 @@ export function RecepTab({ empreendimentosNomes }: { empreendimentosNomes: strin
           {historico.length === 0 ? (
             <li className="hist-row cell-mute">Sem visitas no período para este empreendimento.</li>
           ) : (
-            historico.map((d) => (
-              <li key={d.data} className="hist-row">
-                <span className="hist-row-date">{d.data}</span>
-                <span className="hist-row-block">
-                  <Home size={13} strokeWidth={1.75} />
-                  <strong>{d.visitas}</strong> visitas
-                </span>
-                <span className="hist-row-block">
-                  <Sun size={13} strokeWidth={1.75} />
-                  <strong>{d.manha}</strong> manhã
-                </span>
-                <span className="hist-row-block">
-                  <Moon size={13} strokeWidth={1.75} />
-                  <strong>{d.tarde}</strong> tarde
-                </span>
-              </li>
-            ))
+            historico.map((d) => {
+              const aberto = diasAbertos.has(d.data);
+              const visitasDoDia = visitasPorDia.get(d.data) ?? [];
+              return (
+                <li key={d.data} className="hist-item">
+                  <button
+                    type="button"
+                    className="hist-row hist-row--toggle"
+                    aria-expanded={aberto}
+                    onClick={() => toggleDia(d.data)}
+                  >
+                    <ChevronDown
+                      size={15}
+                      strokeWidth={2}
+                      className="hist-row-chevron"
+                      data-open={aberto || undefined}
+                      aria-hidden
+                    />
+                    <span className="hist-row-date">{d.data}</span>
+                    <span className="hist-row-block">
+                      <Home size={13} strokeWidth={1.75} />
+                      <strong>{d.visitas}</strong> visitas
+                    </span>
+                    <span className="hist-row-block">
+                      <Sun size={13} strokeWidth={1.75} />
+                      <strong>{d.manha}</strong> manhã
+                    </span>
+                    <span className="hist-row-block">
+                      <Moon size={13} strokeWidth={1.75} />
+                      <strong>{d.tarde}</strong> tarde
+                    </span>
+                  </button>
+                  {aberto && (
+                    <div className="hist-detail">
+                      {visitasDoDia.length === 0 ? (
+                        <p className="cell-mute hist-detail-empty">
+                          Sem detalhe de visitas para este dia.
+                        </p>
+                      ) : (
+                        <table className="data-table hist-detail-table">
+                          <thead>
+                            <tr>
+                              <th>Hora</th>
+                              <th>Cliente</th>
+                              <th>Corretor</th>
+                              <th>Turno</th>
+                              <th>Origem</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visitasDoDia.map((v, i) => {
+                              const turno = v.turno.toLowerCase();
+                              return (
+                                <tr key={`${d.data}-${v.hora}-${i}`}>
+                                  <td className="cell-hora">{v.hora || "—"}</td>
+                                  <td className="cell-strong">{v.cliente || "—"}</td>
+                                  <td>{v.corretor || "—"}</td>
+                                  <td>
+                                    {turno === "manha" ? (
+                                      <span className="status-pill" data-state="warn">
+                                        <Sun size={11} strokeWidth={2} /> Manhã
+                                      </span>
+                                    ) : turno === "tarde" ? (
+                                      <span className="status-pill" data-state="violet">
+                                        <Moon size={11} strokeWidth={2} /> Tarde
+                                      </span>
+                                    ) : (
+                                      <span className="cell-mute">—</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span
+                                      className="chip-soft"
+                                      data-accent={origemAccent(v.origem || "—")}
+                                    >
+                                      {v.origem || "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })
           )}
         </ul>
       </section>
@@ -644,7 +775,7 @@ function RecepSkeleton() {
               <UserCheck size={18} strokeWidth={2} /> Corretores no plantão
             </h2>
             <p className="data-card-sub">
-              Corretores escalados para hoje cujo turno ainda não encerrou (plantão /
+              Corretores escalados para hoje — dia inteiro, manhã e tarde (plantão /
               on_duty_brokers).
             </p>
           </div>
