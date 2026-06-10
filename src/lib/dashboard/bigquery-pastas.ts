@@ -4,7 +4,7 @@ import { BigQuery } from "@google-cloud/bigquery";
 
 const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
-const PASTAS = `\`${PROJECT}.${DATASET}.Pastas\``;
+const PASTAS = `\`${PROJECT}.${DATASET}.precadastros_completo_latest\``;
 
 let client: BigQuery | null = null;
 
@@ -21,7 +21,7 @@ function getBigQuery(): BigQuery {
 export type PastasPeriodInput = {
   /** IDs numéricos dos empreendimentos selecionados que possuem ID. */
   empreendimentoCodigos: number[];
-  /** Nomes (catálogo) dos empreendimentos selecionados — comparados a `Pastas.empreendimento` (NFD). */
+  /** Nomes (catálogo) dos empreendimentos selecionados — comparados a `precadastros_completo_latest.empreendimento` (NFD). */
   empreendimentoNomes: string[];
   dateFrom: string; // YYYY-MM-DD
   dateTo: string; // YYYY-MM-DD
@@ -60,8 +60,8 @@ function foldClient(value: string): string {
 }
 
 /**
- * Agrega `dwh.Pastas` por `idempreendimento`/`empreendimento` (nome) e data de
- * `referencia_data` no período. Aceita múltiplos empreendimentos via UNNEST.
+ * Agrega `precadastros_completo_latest` por `idempreendimento`/`empreendimento`
+ * (nome) e data de `referencia_data` no período. Aceita múltiplos empreendimentos via UNNEST.
  * `idsituacao`: 5 → Concluídas (Aprovado); 3, 6 → Distratadas (Cancelada, Reprovado); demais → Em andamento.
  */
 export async function fetchPastasTotais(input: PastasPeriodInput): Promise<PastasTotaisPayload> {

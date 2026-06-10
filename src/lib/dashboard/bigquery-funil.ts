@@ -4,7 +4,7 @@ import { BigQuery } from "@google-cloud/bigquery";
 
 const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
-const LEADS = `\`${PROJECT}.${DATASET}.Leads\``;
+const LEADS = `\`${PROJECT}.${DATASET}.leads_completo_latest\``;
 const VISITAS = `\`${PROJECT}.${DATASET}.Visitas\``;
 const PUBLIC_VISITAS = `\`${PROJECT}.${DATASET}.public_visitas\``;
 const RESERVAS_COMPLETAS = `\`${PROJECT}.${DATASET}.reservas_cabecalho_latest\``;
