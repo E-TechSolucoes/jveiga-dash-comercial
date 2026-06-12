@@ -43,7 +43,13 @@ import {
   type ArsenalActionWithExecutions,
   type ArsenalBroker,
   type ArsenalExecution,
+  type FieldAction,
 } from "@/lib/arsenal/api";
+import { brokerScoreActionSlug } from "@/lib/broker-scores/action-slugs";
+import {
+  recordBrokerScoresForParticipants,
+  removeBrokerScoresForParticipants,
+} from "@/lib/broker-scores/api";
 import type { RealEstateAgency } from "@/lib/imob/api";
 
 import { DIAS_SEMANA, PONTOS, type Nivel } from "../../_components/arsenal-data";
@@ -87,6 +93,27 @@ const NIVEL_ACCENT: Record<Nivel, "blue" | "violet" | "emerald" | "amber"> = {
 
 function executionSlotKey(actionId: string, weekday: number): string {
   return `${actionId}__d${weekday}`;
+}
+
+function findActionById(
+  actions: ArsenalActionWithExecutions[],
+  actionId: string,
+): FieldAction | null {
+  return actions.find((a) => a.action.id === actionId)?.action ?? null;
+}
+
+function findExecutionById(
+  actions: ArsenalActionWithExecutions[],
+  executionId: string,
+): { action: FieldAction; execution: ArsenalExecution } | null {
+  for (const row of actions) {
+    for (const execution of row.executions) {
+      if (execution?.id === executionId) {
+        return { action: row.action, execution };
+      }
+    }
+  }
+  return null;
 }
 
 function toBrDateRange(weekStart: string, weekEnd: string): string {
@@ -335,7 +362,19 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       });
       const id = executionId ?? row.id;
       await validateExecMutation.mutateAsync(id);
-      const actionName = week?.actions.find((a) => a.action.id === actionId)?.action.nome;
+
+      const action = findActionById(week?.actions ?? [], actionId);
+      if (action) {
+        await recordBrokerScoresForParticipants({
+          actionSlug: brokerScoreActionSlug(action.code),
+          weekStart,
+          weekday,
+          empreendimentoId,
+          participantIds: draft.participantIds,
+        });
+      }
+
+      const actionName = action?.nome;
       const diaName = DIAS_SEMANA[weekday - 1] ?? `dia ${weekday}`;
       showToast(
         "success",
@@ -358,7 +397,19 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     const slot = `unvalidate__${executionId}`;
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
+      const match = findExecutionById(week?.actions ?? [], executionId);
       await unvalidateExecMutation.mutateAsync(executionId);
+
+      if (match && weekStart && empreendimentoId) {
+        await removeBrokerScoresForParticipants({
+          actionSlug: brokerScoreActionSlug(match.action.code),
+          weekStart,
+          weekday: match.execution.weekday,
+          empreendimentoId,
+          participantIds: match.execution.participants.map((p) => p.broker_id),
+        });
+      }
+
       showToast("success", "Validação desfeita.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
