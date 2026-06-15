@@ -123,10 +123,10 @@ export async function fetchFunnelPeriod(input: FunnelPeriodInput): Promise<Funne
         CROSS JOIN params p
         WHERE DATE(
           COALESCE(
-            -- dwh.Visitas grava data como MM/DD/YYYY (US, verificado vs
-            -- created_at_utc); dwh.public_visitas usa ISO. Ordem evita
-            -- falso-positivo do parser DMY em datas ambíguas (day <= 12).
-            SAFE.PARSE_DATE('%m/%d/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
+            -- Alinhado ao dash-vendas: data da visita é DD/MM/YYYY;
+            -- dwh.public_visitas usa ISO. Mesma ordem do
+            -- bigquery-visitas-model.ts do dash-vendas para casar o nº de visitas.
+            SAFE.PARSE_DATE('%d/%m/%Y', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             SAFE.PARSE_DATE('%Y-%m-%d', NULLIF(TRIM(CAST(v.data AS STRING)), '')),
             DATE(v.created_at_utc)
           )
