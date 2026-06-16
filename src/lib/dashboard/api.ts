@@ -174,9 +174,9 @@ export async function getFunil(
   signal?: AbortSignal,
 ): Promise<FunilPayload> {
   const qs = new URLSearchParams({ codigos: codigos.join(","), nomes: nomes.join("||"), from, to });
-  const data = await fetchDashboardJson<Partial<FunilPayload>>(
-    `/api/dashboard/funil?${qs.toString()}`,
-    signal,
+  const data = await apiFetch<Partial<FunilPayload>>(
+    `/api/v1/dashboard/funil/resumo?${qs.toString()}`,
+    { signal, cache: "no-store" },
   );
   return {
     leads: Number(data.leads ?? 0),
@@ -249,8 +249,8 @@ export function getConversaoHistorica(
   signal?: AbortSignal,
 ): Promise<HistoricConversionPayload> {
   const qs = new URLSearchParams({ codigo, nome });
-  return fetchDashboardJson<HistoricConversionPayload>(
-    `/api/dashboard/conversao-historica?${qs.toString()}`,
-    signal,
+  return apiFetch<HistoricConversionPayload>(
+    `/api/v1/dashboard/conversao-historica?${qs.toString()}`,
+    { signal, cache: "no-store" },
   );
 }
