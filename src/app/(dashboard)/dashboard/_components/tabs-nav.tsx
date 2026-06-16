@@ -37,8 +37,20 @@ export const TAB_ITEMS: TabItem[] = [
   },
   { id: "recep", label: "Recepção", href: "/dashboard/recep", icon: Gift, accent: "violet" },
   { id: "pastas", label: "Pastas", href: "/dashboard/pastas", icon: FolderOpen, accent: "amber" },
-  { id: "arsenal", label: "Armas", href: "/dashboard/arsenal", icon: Swords, accent: "rose" },
-  { id: "outbound", label: "Outbound", href: "/dashboard/outbound", icon: Radio, accent: "sky" },
+  {
+    id: "arsenal",
+    label: "Cadastro de Ações Offline",
+    href: "/dashboard/arsenal",
+    icon: Swords,
+    accent: "rose",
+  },
+  {
+    id: "outbound",
+    label: "Resultado das Ações Offline",
+    href: "/dashboard/outbound",
+    icon: Radio,
+    accent: "sky",
+  },
   { id: "imob", label: "Imobiliárias", href: "/dashboard/imob", icon: Building2, accent: "teal" },
   {
     id: "conhecimento",
