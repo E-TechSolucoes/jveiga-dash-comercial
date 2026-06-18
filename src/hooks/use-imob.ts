@@ -17,10 +17,16 @@ import { qk } from "./query-keys";
 
 const AGENCIES_KEY = qk.agencies();
 
-export function useAgencies() {
+/**
+ * Lista imobiliárias. Quando `empreendimentoId` é informado, traz só as
+ * vinculadas àquele empreendimento; null/undefined → catálogo global.
+ * A chave inclui o empreendimento para cachear cada escopo separadamente; as
+ * mutations invalidam o prefixo `AGENCIES_KEY`, atingindo todos os escopos.
+ */
+export function useAgencies(empreendimentoId?: number | null) {
   return useQuery({
-    queryKey: AGENCIES_KEY,
-    queryFn: () => listAgencies(),
+    queryKey: empreendimentoId == null ? AGENCIES_KEY : [...AGENCIES_KEY, empreendimentoId],
+    queryFn: () => listAgencies(empreendimentoId ?? undefined),
   });
 }
 

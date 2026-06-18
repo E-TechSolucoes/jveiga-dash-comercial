@@ -219,7 +219,11 @@ function ImobRow({
   );
 }
 
-export function ImobTab() {
+export function ImobTab({ empreendimentoIds }: { empreendimentoIds: number[] }) {
+  // Escopo por empreendimento selecionado. Espelha o padrão do outbound/arsenal:
+  // usa o primeiro id selecionado; null → catálogo global completo.
+  const empreendimentoId = empreendimentoIds[0] ?? null;
+
   const [toast, setToast] = useState<{ kind: ToastKind; message: string } | null>(null);
 
   const [novoNome, setNovoNome] = useState("");
@@ -231,7 +235,7 @@ export function ImobTab() {
   const [page, setPage] = useState(1);
   const search = useDebouncedValue(searchInput.trim().toLowerCase());
 
-  const agenciesQuery = useAgencies();
+  const agenciesQuery = useAgencies(empreendimentoId);
   const imobs = useMemo<Imobiliaria[]>(
     () => (agenciesQuery.data ?? []).map(fromApi),
     [agenciesQuery.data],

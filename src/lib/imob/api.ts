@@ -58,8 +58,17 @@ export type PatchAgencyPayload = Partial<{
   validated: boolean;
 }>;
 
-export function listAgencies(): Promise<RealEstateAgency[]> {
-  return apiFetch<RealEstateAgency[]>(BASE);
+/**
+ * Lista imobiliárias. Sem argumento → catálogo global completo. Com
+ * `empreendimentoId` → apenas as imobiliárias vinculadas àquele empreendimento
+ * (vínculo derivado das reservas no CVDW, no backend).
+ */
+export function listAgencies(empreendimentoId?: number): Promise<RealEstateAgency[]> {
+  const url =
+    empreendimentoId == null
+      ? BASE
+      : `${BASE}?${new URLSearchParams({ empreendimento_id: String(empreendimentoId) })}`;
+  return apiFetch<RealEstateAgency[]>(url);
 }
 
 export function createAgency(payload: CreateAgencyPayload): Promise<RealEstateAgency> {
