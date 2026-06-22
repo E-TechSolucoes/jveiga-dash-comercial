@@ -29,6 +29,8 @@ export const qk = {
   globalBrokers: (q: string) => ["global-brokers", q] as const,
   outboundWeek: (weekStart: string, empreendimentoId: number) =>
     ["outbound-week", weekStart, empreendimentoId] as const,
+  leadAudit: (empreendimentoId: number, page: number) =>
+    ["lead-audit", empreendimentoId, page] as const,
 
   standCheckItems: (empreendimentoIds: string) => ["stand-check-items", empreendimentoIds] as const,
   dailyCheckItems: (empreendimentoIds: string) => ["daily-check-items", empreendimentoIds] as const,

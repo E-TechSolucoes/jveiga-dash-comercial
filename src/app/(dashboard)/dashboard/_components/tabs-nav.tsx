@@ -8,6 +8,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   Radio,
+  Search,
   Swords,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,13 @@ export const TAB_ITEMS: TabItem[] = [
     accent: "emerald",
   },
   { id: "recep", label: "Recepção", href: "/dashboard/recep", icon: Gift, accent: "violet" },
+  {
+    id: "auditoria",
+    label: "Auditoria",
+    href: "/dashboard/auditoria",
+    icon: Search,
+    accent: "sky",
+  },
   { id: "pastas", label: "Pastas", href: "/dashboard/pastas", icon: FolderOpen, accent: "amber" },
   {
     id: "arsenal",

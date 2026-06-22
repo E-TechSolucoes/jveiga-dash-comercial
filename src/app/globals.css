@@ -4793,6 +4793,106 @@ body {
 }
 
 /* ============================================================
+   ============= AUDITORIA DE LEADS =============================
+   ============================================================ */
+
+.audit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.audit-stack > .kpi-row,
+.audit-stack > .data-card {
+  margin-bottom: 0;
+}
+.audit-footnote {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin: -4px 0 4px;
+}
+.audit-upload-status {
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+.audit-upload-status[data-state="ok"] {
+  color: var(--emerald-700, #15803d);
+}
+.audit-upload-status[data-state="warn"] {
+  color: var(--amber-700, #b45309);
+}
+.audit-upload-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--line-soft);
+}
+.audit-template-btn {
+  flex-shrink: 0;
+}
+.audit-template-hint {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  line-height: 1.4;
+  max-width: 520px;
+}
+.audit-template-hint strong {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.audit-field-select {
+  width: 100%;
+  min-width: 108px;
+  max-width: 148px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+.audit-field-select:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  border-color: var(--blue-500, #3b82f6);
+}
+.audit-cell-sub {
+  font-size: 10px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+}
+.audit-obs-cell {
+  max-width: 180px;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+.audit-row--alert td {
+  background: #fff7ed;
+}
+.audit-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.audit-dot--ok {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+.audit-dot--pending {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+.audit-table thead th,
+.audit-table tbody td {
+  font-size: 12px;
+}
+
+/* ============================================================
    ============= RECEPÇÃO ======================================
    ============================================================ */
 

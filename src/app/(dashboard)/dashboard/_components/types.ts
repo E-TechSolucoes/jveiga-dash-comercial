@@ -2,6 +2,7 @@ export type TabId =
   | "resumo"
   | "checklist"
   | "recep"
+  | "auditoria"
   | "pastas"
   | "arsenal"
   | "outbound"
