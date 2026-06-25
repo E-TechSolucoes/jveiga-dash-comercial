@@ -1,18 +1,5 @@
-"use client";
-
-import { useDashboardData } from "../_components/dashboard-provider";
-import { OutboundTab } from "./_components/outbound-tab";
+import { redirect } from "next/navigation";
 
 export default function OutboundPage() {
-  const { semana, setSemana, empreendimentoIds } = useDashboardData();
-
-  return (
-    <div className="tc" data-active="true">
-      <OutboundTab
-        semana={semana}
-        onSemanaChange={setSemana}
-        empreendimentoIds={empreendimentoIds}
-      />
-    </div>
-  );
+  redirect("/dashboard/acoes-offline?section=resultado");
 }

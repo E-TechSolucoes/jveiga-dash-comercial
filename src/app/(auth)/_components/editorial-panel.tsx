@@ -4,7 +4,7 @@ export function EditorialPanel() {
       className="relative hidden overflow-hidden text-white lg:col-span-5 lg:flex lg:flex-col"
       style={{
         background:
-          "radial-gradient(900px 320px at 85% -30%, rgba(255,255,255,0.18), transparent 60%), radial-gradient(700px 280px at 0% 110%, rgba(99,102,241,0.35), transparent 60%), linear-gradient(135deg, #1e40af 0%, #2563eb 55%, #3b82f6 100%)",
+          "radial-gradient(900px 320px at 85% -30%, rgba(255,255,255,0.16), transparent 60%), radial-gradient(700px 280px at 0% 110%, rgba(29,58,214,0.55), transparent 60%), linear-gradient(135deg, #0a1a8a 0%, #1226aa 55%, #1d3ad6 100%)",
       }}
     >
       {/* fine vertical grid */}
@@ -55,19 +55,23 @@ export function EditorialPanel() {
         }}
       />
 
-      <header className="relative z-10 flex items-center justify-between px-12 pt-10">
-        <div className="flex items-center gap-3">
+      <header className="relative z-10 flex items-center justify-between px-14 pt-12">
+        <div className="flex items-center gap-3.5">
           <div
             aria-hidden
-            className="flex h-9 w-9 items-center justify-center rounded-sm border border-white/25 bg-white/10 font-sans text-[15px] font-semibold text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-[14px] text-[15px] font-bold tracking-[0.01em] text-[#1d4ed8]"
+            style={{
+              background: "linear-gradient(135deg, #ffffff 0%, #e0e7ff 100%)",
+              boxShadow: "0 6px 14px -4px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.6)",
+            }}
           >
             JV
           </div>
-          <div className="font-mono text-[10px] tracking-[0.36em] text-white/55">
+          <div className="font-mono text-[10px] tracking-[0.36em] text-white/60">
             JDV &nbsp;·&nbsp; PAINEL COMERCIAL
           </div>
         </div>
-        <div className="flex items-center gap-2.5 font-mono text-[10px] tracking-[0.36em] text-white/55">
+        <div className="flex items-center gap-2.5 font-mono text-[10px] tracking-[0.36em] text-white/60">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
@@ -76,14 +80,14 @@ export function EditorialPanel() {
         </div>
       </header>
 
-      <div className="relative z-10 flex flex-1 flex-col justify-center px-12 py-10">
-        <h2 className="font-sans text-[72px] leading-[0.95] tracking-tight text-white">
-          <span className="font-semibold">Jerônimo</span>
-          <span className="block font-light text-white/90">da Veiga</span>
+      <div className="relative z-10 flex flex-1 flex-col justify-center px-14 py-12">
+        <h2 className="font-sans text-[64px] leading-[0.98] font-semibold tracking-tight text-white">
+          Jerônimo
+          <span className="block font-light text-white/85">da Veiga</span>
         </h2>
-        <div className="mt-9 flex items-center gap-4">
+        <div className="mt-10 flex items-center gap-4">
           <div className="h-px w-16 bg-white/35" />
-          <p className="font-mono text-[10px] tracking-[0.36em] text-white/55">
+          <p className="font-mono text-[10px] tracking-[0.36em] text-white/60">
             PAINEL DO COMERCIAL
           </p>
         </div>
@@ -93,11 +97,11 @@ export function EditorialPanel() {
         </p>
 
         {/* sparkline ornament */}
-        <div className="mt-12 flex items-end gap-6">
+        <div className="mt-14 flex items-end gap-6">
           <svg
             aria-hidden
             viewBox="0 0 480 80"
-            className="h-14 w-full max-w-md text-blue-400"
+            className="h-14 w-full max-w-md text-blue-300"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.25"
@@ -118,8 +122,8 @@ export function EditorialPanel() {
         </div>
       </div>
 
-      <footer className="relative z-10 flex items-end justify-end px-12 pb-10">
-        <div className="flex items-center gap-4 font-mono text-[10px] tracking-[0.36em] text-white/40">
+      <footer className="relative z-10 flex items-end justify-end px-14 pb-12">
+        <div className="flex items-center gap-4 font-mono text-[10px] tracking-[0.36em] text-white/45">
           <span>v 1.0</span>
           <span className="h-3 w-px bg-white/20" />
           <span>BI · COMERCIAL</span>

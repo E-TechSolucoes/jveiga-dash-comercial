@@ -79,15 +79,16 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="grid min-h-svh grid-cols-1 bg-white text-slate-900 lg:grid-cols-12">
+    <main className="grid min-h-svh grid-cols-1 bg-[#eef3fa] text-[#0f172a] lg:grid-cols-12">
       <EditorialPanel />
 
-      <section className="relative flex flex-col px-6 py-10 sm:px-12 lg:col-span-7 lg:px-16 lg:py-12">
+      <section className="relative flex flex-col bg-white px-6 py-10 sm:px-12 lg:col-span-7 lg:px-20 lg:py-14">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: "linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px)",
+            backgroundImage:
+              "linear-gradient(to right, rgba(18,38,170,0.035) 1px, transparent 1px)",
             backgroundSize: "120px 100%",
           }}
         />
@@ -95,13 +96,13 @@ export default function RegisterPage() {
         <header className="relative z-10 flex items-center justify-between">
           <Link
             href="/"
-            className="font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-slate-900"
+            className="font-mono text-[10px] tracking-[0.32em] text-[#1226aa] transition hover:opacity-70"
           >
             ACESSO &nbsp;/&nbsp; CRIAR CONTA
           </Link>
           <Link
             href="/login"
-            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-blue-700"
+            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-[#64748b] transition hover:text-[#1226aa]"
           >
             <ArrowRight
               className="h-3 w-3 -scale-x-100 transition group-hover:-translate-x-1"
@@ -111,12 +112,12 @@ export default function RegisterPage() {
           </Link>
         </header>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center py-14">
-          <h1 className="font-sans text-[56px] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[64px]">
+        <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-14">
+          <h1 className="font-sans text-[48px] leading-[1.04] font-semibold tracking-tight text-[#0f172a] sm:text-[56px]">
             Crie sua
-            <span className="block font-light text-blue-700">conta.</span>
+            <span className="block font-light text-[#1226aa]">conta.</span>
           </h1>
-          <p className="mt-6 max-w-md text-base leading-relaxed text-slate-500">
+          <p className="mt-6 max-w-md text-[15px] leading-relaxed text-[#64748b]">
             Peça acesso ao painel comercial. Após a aprovação, você acompanha funil, metas e
             performance em tempo real.
           </p>
@@ -174,23 +175,27 @@ export default function RegisterPage() {
             {error && !Object.keys(fields).length && (
               <p
                 role="alert"
-                className="flex items-start gap-3 border-l-2 border-rose-500 bg-rose-50/60 py-3 pl-4 text-sm text-rose-700"
+                className="flex items-start gap-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-sm text-[#be123c]"
               >
-                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-rose-700/70">
+                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-[#be123c]/70">
                   ERRO
                 </span>
-                <span className="text-rose-700">{error}</span>
+                <span>{error}</span>
               </p>
             )}
 
             <button
               type="submit"
               disabled={submitting}
-              className="group relative flex w-full items-center justify-between overflow-hidden rounded-sm bg-slate-900 px-6 py-4 text-left text-white transition focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              className="group relative flex w-full items-center justify-between overflow-hidden rounded-xl px-6 py-4 text-left text-white transition focus:ring-4 focus:ring-[#dbeafe] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                background: "linear-gradient(135deg, #1226aa 0%, #1d3ad6 100%)",
+                boxShadow: "0 12px 24px -12px rgba(18,38,170,0.6)",
+              }}
             >
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1e40af] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
+                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1d3ad6] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
               />
               <span className="relative z-10 font-mono text-[11px] tracking-[0.36em]">
                 {submitting ? "CRIANDO CONTA…" : "CRIAR CONTA"}
@@ -202,11 +207,11 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-slate-500">
+          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-[#64748b]">
             JÁ TEM CONTA?&nbsp;&nbsp;
             <Link
               href="/login"
-              className="text-slate-900 underline-offset-[6px] transition hover:text-blue-700 hover:underline"
+              className="text-[#1226aa] underline-offset-[6px] transition hover:underline"
             >
               ENTRAR
             </Link>
@@ -251,7 +256,7 @@ function Field({
     <div>
       <label
         htmlFor={id}
-        className="mb-2 block font-mono text-[10px] tracking-[0.32em] text-slate-500"
+        className="mb-2.5 block font-mono text-[10px] tracking-[0.32em] text-[#64748b]"
       >
         {label}
       </label>
@@ -265,12 +270,12 @@ function Field({
           required={required}
           placeholder={placeholder}
           aria-invalid={hasError || undefined}
-          className={`w-full rounded-md border py-3 pl-4 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:bg-white focus:ring-2 ${
+          className={`w-full rounded-xl border bg-white py-3.5 pl-4 text-[15px] text-[#0f172a] transition outline-none placeholder:text-[#94a3b8] focus:ring-4 ${
             isPassword ? "pr-14" : "pr-4"
           } ${
             hasError
-              ? "border-rose-300 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-500/25"
-              : "border-blue-200 bg-blue-50/40 focus:border-blue-600 focus:ring-blue-600/25"
+              ? "border-[#fecdd3] focus:border-[#fb7185] focus:ring-[#fff1f2]"
+              : "border-[#e9edf4] focus:border-[#3b82f6] focus:ring-[#eff6ff]"
           }`}
         />
         {isPassword && (
@@ -279,7 +284,7 @@ function Field({
             onClick={() => setReveal((v) => !v)}
             aria-label={reveal ? "Ocultar senha" : "Mostrar senha"}
             aria-pressed={reveal}
-            className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400 transition hover:text-blue-700 focus:text-blue-700 focus:outline-none"
+            className="absolute top-1/2 right-3 -translate-y-1/2 text-[#94a3b8] transition hover:text-[#1226aa] focus:text-[#1226aa] focus:outline-none"
           >
             {reveal ? (
               <EyeOff className="h-5 w-5" aria-hidden />
@@ -290,9 +295,9 @@ function Field({
         )}
       </div>
       {hasError ? (
-        <p className="mt-2 text-xs text-rose-600">{errors!.join(" · ")}</p>
+        <p className="mt-2 text-xs text-[#be123c]">{errors!.join(" · ")}</p>
       ) : hint ? (
-        <p className="mt-2 text-xs text-slate-500">{hint}</p>
+        <p className="mt-2 text-xs text-[#64748b]">{hint}</p>
       ) : null}
     </div>
   );

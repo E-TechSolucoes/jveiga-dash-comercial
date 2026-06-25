@@ -59,47 +59,45 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="grid min-h-svh grid-cols-1 bg-white text-slate-900 lg:grid-cols-12">
+    <main className="grid min-h-svh grid-cols-1 bg-[#eef3fa] text-[#0f172a] lg:grid-cols-12">
       <EditorialPanel />
 
-      <section className="relative flex flex-col px-6 py-10 sm:px-12 lg:col-span-7 lg:px-16 lg:py-12">
+      <section className="relative flex flex-col bg-white px-6 py-10 sm:px-12 lg:col-span-7 lg:px-20 lg:py-14">
         {/* faint vertical grid */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: "linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px)",
+            backgroundImage:
+              "linear-gradient(to right, rgba(18,38,170,0.035) 1px, transparent 1px)",
             backgroundSize: "120px 100%",
           }}
         />
 
         <header className="relative z-10 flex items-center justify-between">
-          <Link
-            href="/"
-            className="font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-slate-900"
-          >
+          <span className="font-mono text-[10px] tracking-[0.32em] text-[#1226aa]">
             ACESSO &nbsp;/&nbsp; ENTRAR
-          </Link>
+          </span>
           <Link
             href="/register"
-            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-slate-500 transition hover:text-blue-700"
+            className="group flex items-center gap-2 font-mono text-[10px] tracking-[0.32em] text-[#64748b] transition hover:text-[#1226aa]"
           >
             CRIAR CONTA
             <ArrowRight className="h-3 w-3 transition group-hover:translate-x-1" aria-hidden />
           </Link>
         </header>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center py-16">
-          <h1 className="font-sans text-[56px] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[64px]">
+        <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-16">
+          <h1 className="font-sans text-[48px] leading-[1.04] font-semibold tracking-tight text-[#0f172a] sm:text-[56px]">
             Faça seu
-            <span className="block font-light text-blue-700">login.</span>
+            <span className="block font-light text-[#1226aa]">login.</span>
           </h1>
-          <p className="mt-6 max-w-md text-base leading-relaxed text-slate-500">
+          <p className="mt-6 max-w-md text-[15px] leading-relaxed text-[#64748b]">
             Use suas credenciais para entrar no painel. Os dados refletem em tempo real o funil, as
             metas e a performance comercial.
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-14 space-y-9">
+          <form onSubmit={handleSubmit} className="mt-12 space-y-7">
             <FieldRow label="E-MAIL" htmlFor="email">
               <input
                 id="email"
@@ -108,7 +106,7 @@ export default function LoginPage() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-md border border-blue-200 bg-blue-50/40 px-4 py-3 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                className="w-full rounded-xl border border-[#e9edf4] bg-white px-4 py-3.5 text-[15px] text-[#0f172a] transition outline-none placeholder:text-[#94a3b8] focus:border-[#3b82f6] focus:ring-4 focus:ring-[#eff6ff]"
                 placeholder="voce@empresa.com"
               />
             </FieldRow>
@@ -122,7 +120,7 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-md border border-blue-200 bg-blue-50/40 py-3 pr-14 pl-4 text-base text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                  className="w-full rounded-xl border border-[#e9edf4] bg-white py-3.5 pr-14 pl-4 text-[15px] text-[#0f172a] transition outline-none placeholder:text-[#94a3b8] focus:border-[#3b82f6] focus:ring-4 focus:ring-[#eff6ff]"
                   placeholder="••••••••"
                 />
                 <button
@@ -130,7 +128,7 @@ export default function LoginPage() {
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   aria-pressed={showPassword}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-slate-400 transition hover:text-blue-700 focus:text-blue-700 focus:outline-none"
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-[#94a3b8] transition hover:text-[#1226aa] focus:text-[#1226aa] focus:outline-none"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" aria-hidden />
@@ -150,7 +148,7 @@ export default function LoginPage() {
                   autoComplete="one-time-code"
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
-                  className="w-full rounded-md border border-blue-200 bg-blue-50/40 px-4 py-3 text-base tracking-[0.5em] text-slate-900 transition outline-none placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/25"
+                  className="w-full rounded-xl border border-[#e9edf4] bg-white px-4 py-3.5 text-[15px] tracking-[0.5em] text-[#0f172a] transition outline-none placeholder:tracking-normal placeholder:text-[#94a3b8] focus:border-[#3b82f6] focus:ring-4 focus:ring-[#eff6ff]"
                   placeholder="000000"
                 />
               </FieldRow>
@@ -159,23 +157,27 @@ export default function LoginPage() {
             {error && (
               <p
                 role="alert"
-                className="flex items-start gap-3 border-l-2 border-rose-500 bg-rose-50/60 py-3 pl-4 text-sm text-rose-700"
+                className="flex items-start gap-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-sm text-[#be123c]"
               >
-                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-rose-700/70">
+                <span className="mt-0.5 font-mono text-[10px] tracking-[0.32em] text-[#be123c]/70">
                   ERRO
                 </span>
-                <span className="text-rose-700">{error}</span>
+                <span>{error}</span>
               </p>
             )}
 
             <button
               type="submit"
               disabled={submitting}
-              className="group relative flex w-full items-center justify-between overflow-hidden rounded-sm bg-slate-900 px-6 py-4 text-left text-white transition focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              className="group relative flex w-full items-center justify-between overflow-hidden rounded-xl px-6 py-4 text-left text-white transition focus:ring-4 focus:ring-[#dbeafe] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                background: "linear-gradient(135deg, #1226aa 0%, #1d3ad6 100%)",
+                boxShadow: "0 12px 24px -12px rgba(18,38,170,0.6)",
+              }}
             >
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1e40af] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
+                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#1d3ad6] via-[#2563eb] to-[#3b82f6] transition-transform duration-500 group-hover:translate-x-0"
               />
               <span className="relative z-10 font-mono text-[11px] tracking-[0.36em]">
                 {submitting ? "ENTRANDO…" : "ENTRAR"}
@@ -187,11 +189,11 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-slate-500">
+          <p className="mt-10 font-mono text-[10px] tracking-[0.32em] text-[#64748b]">
             SEM ACESSO?&nbsp;&nbsp;
             <Link
               href="/register"
-              className="text-slate-900 underline-offset-[6px] transition hover:text-blue-700 hover:underline"
+              className="text-[#1226aa] underline-offset-[6px] transition hover:underline"
             >
               CRIAR CONTA
             </Link>
@@ -215,7 +217,7 @@ function FieldRow({
     <div>
       <label
         htmlFor={htmlFor}
-        className="mb-2 block font-mono text-[10px] tracking-[0.32em] text-slate-500"
+        className="mb-2.5 block font-mono text-[10px] tracking-[0.32em] text-[#64748b]"
       >
         {label}
       </label>

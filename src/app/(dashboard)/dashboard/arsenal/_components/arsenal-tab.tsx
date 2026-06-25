@@ -5,23 +5,20 @@ import { createPortal } from "react-dom";
 import {
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
-  CircleDollarSign,
-  Dumbbell,
   Info,
   ListChecks,
   MapPin,
   Megaphone,
-  Plus,
-  ShieldCheck,
   Pencil,
+  Plus,
+  Save,
+  ShieldCheck,
+  Target,
   Trash2,
   Users,
   X,
-  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -31,90 +28,48 @@ import {
   usePatchFieldBroker,
   usePutBrokerStats,
   useRemoveBrokerFromWeek,
-  useUnvalidateExecution,
-  useUpsertExecution,
-  useValidateExecution,
 } from "@/hooks/use-arsenal";
 import { useAgencies, useAgencyFieldBrokers } from "@/hooks/use-imob";
 import {
   isApiError,
   isoWeekNumber,
   weekStartFromSemana,
-  type ArsenalActionWithExecutions,
   type ArsenalBroker,
-  type ArsenalExecution,
-  type FieldAction,
 } from "@/lib/arsenal/api";
-import { brokerScoreActionSlug } from "@/lib/broker-scores/action-slugs";
 import {
   recordBrokerScoresForParticipants,
   removeBrokerScoresForParticipants,
 } from "@/lib/broker-scores/api";
+import { bumpResource, useResourceVersion } from "@/lib/dashboard/data-bus";
 import type { RealEstateAgency } from "@/lib/imob/api";
+import {
+  OBJECTIVE_UNITS,
+  createWeeklyAction,
+  listWeeklyActions,
+  unvalidateWeeklyAction,
+  updateWeeklyAction,
+  validateWeeklyAction,
+  type CreateWeeklyActionInput,
+  type ObjectiveUnit,
+  type UpdateWeeklyActionInput,
+  type WeeklyActionDTO,
+} from "@/lib/weekly-actions/api";
+import {
+  API_CATEGORY_TO_UI,
+  UI_CATEGORY_TO_API,
+  WEEKLY_ACTION_CATEGORIES,
+  categoryOfActionType,
+  scoreSlugForActionType,
+} from "@/lib/weekly-actions/catalog";
 
-import { DIAS_SEMANA, PONTOS, type Nivel } from "../../_components/arsenal-data";
-import { ACTION_ICON_MAP } from "../../_components/arsenal-icons";
+import { PONTOS } from "../../_components/arsenal-data";
 import { Toast, type ToastKind } from "../../_components/toast";
 
 const TOAST_DURATION_MS = 3000;
 
-type Filter = "acao" | "treinamento" | "todos";
-
 type StatField = "ind" | "vis" | "pas" | "pas_aprov" | "vendas";
 
 type StatDraft = Partial<Record<StatField, number>>;
-
-const FILTERS: {
-  id: Filter;
-  label: string;
-  Icon: LucideIcon;
-  variant: "blue" | "violet" | "emerald";
-}[] = [
-  { id: "acao", label: "Ações de Campo", Icon: Megaphone, variant: "emerald" },
-  { id: "treinamento", label: "Treinamentos", Icon: Dumbbell, variant: "violet" },
-  { id: "todos", label: "Ver todos", Icon: ListChecks, variant: "blue" },
-];
-
-const WEEKDAY_BY_DIA: Record<string, number> = {
-  Segunda: 1,
-  Terça: 2,
-  Quarta: 3,
-  Quinta: 4,
-  Sexta: 5,
-  Sábado: 6,
-};
-
-const NIVEL_ACCENT: Record<Nivel, "blue" | "violet" | "emerald" | "amber"> = {
-  Soldado: "blue",
-  Capitão: "violet",
-  General: "emerald",
-  Lenda: "amber",
-};
-
-function executionSlotKey(actionId: string, weekday: number): string {
-  return `${actionId}__d${weekday}`;
-}
-
-function findActionById(
-  actions: ArsenalActionWithExecutions[],
-  actionId: string,
-): FieldAction | null {
-  return actions.find((a) => a.action.id === actionId)?.action ?? null;
-}
-
-function findExecutionById(
-  actions: ArsenalActionWithExecutions[],
-  executionId: string,
-): { action: FieldAction; execution: ArsenalExecution } | null {
-  for (const row of actions) {
-    for (const execution of row.executions) {
-      if (execution?.id === executionId) {
-        return { action: row.action, execution };
-      }
-    }
-  }
-  return null;
-}
 
 function toBrDateRange(weekStart: string, weekEnd: string): string {
   const fmt = (iso: string) => {
@@ -122,6 +77,15 @@ function toBrDateRange(weekStart: string, weekEnd: string): string {
     return `${d}/${m}`;
   };
   return `${fmt(weekStart)} — ${fmt(weekEnd)}`;
+}
+
+function weekdayFromPlannedDate(weekStart: string, plannedDate: string): number {
+  const [wy, wm, wd] = weekStart.split("-").map(Number);
+  const [py, pm, pd] = plannedDate.split("-").map(Number);
+  const start = Date.UTC(wy, wm - 1, wd);
+  const planned = Date.UTC(py, pm - 1, pd);
+  const diff = Math.round((planned - start) / 86400000);
+  return Math.min(6, Math.max(1, diff + 1));
 }
 
 function errorMessage(err: unknown): string {
@@ -140,8 +104,6 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   // Backend single-id: usa o primeiro empreendimento selecionado.
   const empreendimentoId = empreendimentoIds[0] ?? null;
 
-  const [filter, setFilter] = useState<Filter>("acao");
-
   const [novoNome, setNovoNome] = useState("");
   const [novaImob, setNovaImob] = useState(""); // agency id (uuid) or "" for none
   const [novoCel, setNovoCel] = useState("");
@@ -149,6 +111,9 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   const [statDrafts, setStatDrafts] = useState<Record<string, StatDraft>>({});
   const [pendingSlot, setPendingSlot] = useState<Record<string, boolean>>({});
   const [pendingBroker, setPendingBroker] = useState<Record<string, boolean>>({});
+  const [weeklyActions, setWeeklyActions] = useState<WeeklyActionDTO[]>([]);
+  const [weeklyActionsLoading, setWeeklyActionsLoading] = useState(false);
+  const [weeklyActionsError, setWeeklyActionsError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ kind: ToastKind; message: string; key: number } | null>(
     null,
@@ -180,6 +145,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   const week = weekQuery.data ?? null;
   const loading = !mounted || weekQuery.isLoading;
   const error = weekQuery.isError ? errorMessage(weekQuery.error) : null;
+  const weeklyActionsVersion = useResourceVersion("weekly-actions");
 
   const agenciesQuery = useAgencies();
   const agencies = agenciesQuery.data ?? [];
@@ -189,22 +155,31 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   const addToWeekMutation = useAddBrokerToWeek();
   const removeFromWeekMutation = useRemoveBrokerFromWeek();
   const brokerStatsMutation = usePutBrokerStats();
-  const upsertExecMutation = useUpsertExecution();
-  const validateExecMutation = useValidateExecution();
-  const unvalidateExecMutation = useUnvalidateExecution();
 
   const apiBrokers: ArsenalBroker[] = week?.brokers ?? [];
 
-  const acaoActions = useMemo<ArsenalActionWithExecutions[]>(
-    () => (week?.actions ?? []).filter((a) => a.action.type === "field_action"),
-    [week?.actions],
-  );
-  const trainingActions = useMemo<ArsenalActionWithExecutions[]>(
-    () => (week?.actions ?? []).filter((a) => a.action.type === "training"),
-    [week?.actions],
-  );
+  const validations = weeklyActions.filter((a) => Boolean(a.validated_at)).length;
 
-  const validations = week?.validations ?? 0;
+  useEffect(() => {
+    if (!weekStart || !empreendimentoId) {
+      return;
+    }
+    const controller = new AbortController();
+    listWeeklyActions({ empreendimentoId, weekStart }, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setWeeklyActions(data);
+      })
+      .catch((e: unknown) => {
+        if (controller.signal.aborted) return;
+        setWeeklyActions([]);
+        setWeeklyActionsError(errorMessage(e));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setWeeklyActionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [empreendimentoId, weekStart, weeklyActionsVersion]);
 
   // Cadastra um corretor novo no cadastro global e já o adiciona à semana.
   const addCorretor = async () => {
@@ -262,6 +237,15 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   };
 
   const [editingBroker, setEditingBroker] = useState<ArsenalBroker | null>(null);
+  const [formTag, setFormTag] = useState<string>(WEEKLY_ACTION_CATEGORIES[0].options[0]);
+  const [formDate, setFormDate] = useState<string>("");
+  const [formObjetivo, setFormObjetivo] = useState<string>("");
+  const [formUnidade, setFormUnidade] = useState<ObjectiveUnit>("leads");
+  const [formText, setFormText] = useState<string>("");
+  const [creatingWeeklyAction, setCreatingWeeklyAction] = useState(false);
+  const [editingAction, setEditingAction] = useState<WeeklyActionDTO | null>(null);
+  const [savingResultId, setSavingResultId] = useState<string | null>(null);
+  const [savingEditId, setSavingEditId] = useState<string | null>(null);
 
   const saveBrokerEdit = async (
     broker: ArsenalBroker,
@@ -338,48 +322,74 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     }
   };
 
-  // ============= ACAO (API) =============
+  // ============= AÇÕES OFFLINE (weekly_actions) =============
+
+  const createOfflineAction = async () => {
+    if (!weekStart || !empreendimentoId) {
+      showToast("error", "Selecione um empreendimento no topo antes de cadastrar.");
+      return;
+    }
+    const text = formText.trim();
+    if (!text) {
+      showToast("error", "Preencha a descrição da ação.");
+      return;
+    }
+    const cat = categoryOfActionType(formTag);
+    const body: CreateWeeklyActionInput = {
+      empreendimento_id: empreendimentoId,
+      week_start: weekStart,
+      category: UI_CATEGORY_TO_API[cat],
+      action_type: formTag,
+      description: text,
+    };
+    if (formDate) body.planned_date = formDate;
+    const objective = formObjetivo.trim();
+    if (objective) {
+      body.objective = objective;
+      body.objective_type = formUnidade;
+    }
+    setCreatingWeeklyAction(true);
+    try {
+      const created = await createWeeklyAction(body);
+      setWeeklyActions((prev) => [...prev, created]);
+      setFormText("");
+      setFormObjetivo("");
+      setFormUnidade("leads");
+      setFormDate("");
+      showToast("success", "Ação cadastrada em Ações da Semana.");
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setCreatingWeeklyAction(false);
+    }
+  };
 
   const validateSlot = async (
-    actionId: string,
-    weekday: number,
+    action: WeeklyActionDTO,
     draft: { local: string; participantIds: string[] },
-    executionId: string | null,
   ): Promise<boolean> => {
     if (!weekStart || !empreendimentoId) return false;
-    const slot = executionSlotKey(actionId, weekday);
+    const slot = action.id;
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
-      const row = await upsertExecMutation.mutateAsync({
-        actionId,
-        weekStart,
-        weekday,
-        empreendimentoId,
-        payload: {
-          local: draft.local.trim() || null,
-          participant_brokers: draft.participantIds,
-        },
+      const updated = await validateWeeklyAction(action.id, {
+        local: draft.local.trim() || undefined,
+        participant_broker_ids: draft.participantIds,
       });
-      const id = executionId ?? row.id;
-      await validateExecMutation.mutateAsync(id);
+      setWeeklyActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
 
-      const action = findActionById(week?.actions ?? [], actionId);
-      if (action) {
+      if (action.planned_date) {
+        const weekday = weekdayFromPlannedDate(weekStart, action.planned_date);
         await recordBrokerScoresForParticipants({
-          actionSlug: brokerScoreActionSlug(action.code),
+          actionSlug: scoreSlugForActionType(action.action_type),
           weekStart,
           weekday,
           empreendimentoId,
           participantIds: draft.participantIds,
         });
       }
-
-      const actionName = action?.nome;
-      const diaName = DIAS_SEMANA[weekday - 1] ?? `dia ${weekday}`;
-      showToast(
-        "success",
-        actionName ? `${actionName} validada em ${diaName}!` : "Validação salva com sucesso!",
-      );
+      bumpResource("weekly-actions");
+      showToast("success", `${action.action_type} validada!`);
       return true;
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -393,23 +403,24 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     }
   };
 
-  const undoAcao = async (executionId: string) => {
-    const slot = `unvalidate__${executionId}`;
+  const undoAcao = async (action: WeeklyActionDTO) => {
+    const slot = `unvalidate__${action.id}`;
     setPendingSlot((prev) => ({ ...prev, [slot]: true }));
     try {
-      const match = findExecutionById(week?.actions ?? [], executionId);
-      await unvalidateExecMutation.mutateAsync(executionId);
+      const updated = await unvalidateWeeklyAction(action.id);
+      setWeeklyActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
 
-      if (match && weekStart && empreendimentoId) {
+      if (action.planned_date && weekStart && empreendimentoId) {
+        const weekday = weekdayFromPlannedDate(weekStart, action.planned_date);
         await removeBrokerScoresForParticipants({
-          actionSlug: brokerScoreActionSlug(match.action.code),
+          actionSlug: scoreSlugForActionType(action.action_type),
           weekStart,
-          weekday: match.execution.weekday,
+          weekday,
           empreendimentoId,
-          participantIds: match.execution.participants.map((p) => p.broker_id),
+          participantIds: (action.participants ?? []).map((p) => p.broker_id),
         });
       }
-
+      bumpResource("weekly-actions");
       showToast("success", "Validação desfeita.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
@@ -422,31 +433,88 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     }
   };
 
+  const patchWeeklyActionInList = (updated: WeeklyActionDTO) => {
+    setWeeklyActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    bumpResource("weekly-actions");
+  };
+
+  const saveActionEdit = async (
+    action: WeeklyActionDTO,
+    draft: {
+      actionType: string;
+      plannedDate: string;
+      objective: string;
+      unit: ObjectiveUnit;
+      description: string;
+    },
+  ) => {
+    const description = draft.description.trim();
+    if (!description) {
+      showToast("error", "Preencha a descrição da ação.");
+      return;
+    }
+    const cat = categoryOfActionType(draft.actionType);
+    const objective = draft.objective.trim();
+    const body: UpdateWeeklyActionInput = {
+      category: UI_CATEGORY_TO_API[cat],
+      action_type: draft.actionType,
+      description,
+      planned_date: draft.plannedDate || "",
+      objective: objective || "",
+      objective_type: objective ? draft.unit : "",
+    };
+    setSavingEditId(action.id);
+    try {
+      const updated = await updateWeeklyAction(action.id, body);
+      patchWeeklyActionInList(updated);
+      setEditingAction(null);
+      showToast("success", "Ação atualizada.");
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setSavingEditId(null);
+    }
+  };
+
+  const saveActionResult = async (
+    action: WeeklyActionDTO,
+    draft: { achieved: number | null; completed: boolean; motivo: string },
+  ) => {
+    if (!draft.completed && !draft.motivo.trim()) {
+      showToast("error", "Informe o motivo quando a ação não foi realizada.");
+      return false;
+    }
+    const body: UpdateWeeklyActionInput = draft.completed
+      ? {
+          status: "completed",
+          completed: true,
+          non_completion_reason: "",
+          achieved: draft.achieved,
+        }
+      : {
+          status: "not_completed",
+          completed: false,
+          non_completion_reason: draft.motivo.trim(),
+          achieved: draft.achieved,
+        };
+    setSavingResultId(action.id);
+    try {
+      const updated = await updateWeeklyAction(action.id, body);
+      patchWeeklyActionInList(updated);
+      showToast("success", "Resultado salvo.");
+      return true;
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+      return false;
+    } finally {
+      setSavingResultId(null);
+    }
+  };
+
   // ============= RENDER =============
 
   return (
     <>
-      <div role="tablist" aria-label="Tipo de arma" className="seg">
-        {FILTERS.map((f) => {
-          const Icon = f.Icon;
-          const active = filter === f.id;
-          return (
-            <button
-              key={f.id}
-              type="button"
-              role="tab"
-              aria-pressed={active}
-              aria-selected={active}
-              onClick={() => setFilter(f.id)}
-              className={`seg-btn${active ? ` seg-btn--${f.variant}` : ""}`}
-            >
-              <Icon size={15} strokeWidth={active ? 2.25 : 1.75} />
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="info-banner">
         <Info size={16} strokeWidth={2} />
         <div>
@@ -505,54 +573,57 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
         />
       )}
 
-      {filter === "treinamento" ? (
-        <AcaoList
-          loading={loading}
-          actions={trainingActions}
-          brokers={apiBrokers}
-          pendingSlot={pendingSlot}
-          onValidateSlot={validateSlot}
-          onUndo={undoAcao}
-          showLocal={false}
-          kindLabel="Treinamento"
-          emptyLabel="Nenhum treinamento cadastrado no catálogo."
+      <section className="acoes-card offline-week-card">
+        <OfflineActionCreateForm
+          formTag={formTag}
+          formDate={formDate}
+          formObjetivo={formObjetivo}
+          formUnidade={formUnidade}
+          formText={formText}
+          disabled={!empreendimentoId || !weekStart || creatingWeeklyAction}
+          creating={creatingWeeklyAction}
+          onTagChange={setFormTag}
+          onDateChange={setFormDate}
+          onObjetivoChange={setFormObjetivo}
+          onUnidadeChange={setFormUnidade}
+          onTextChange={setFormText}
+          onAdd={createOfflineAction}
         />
-      ) : filter === "todos" ? (
-        <>
+
+        <div className="offline-actions-list-wrap">
+          {weeklyActionsError && (
+            <div className="info-banner" data-state="error" style={{ marginBottom: 14 }}>
+              <Info size={16} strokeWidth={2} />
+              <div>{weeklyActionsError}</div>
+            </div>
+          )}
+          <div className="offline-actions-list-head">
+            <h3>Ações cadastradas</h3>
+            <span>
+              {weeklyActionsLoading ? "Carregando…" : `${weeklyActions.length} nesta semana`}
+            </span>
+          </div>
           <AcaoList
-            loading={loading}
-            actions={acaoActions}
+            loading={weeklyActionsLoading}
+            actions={weeklyActions}
             brokers={apiBrokers}
             pendingSlot={pendingSlot}
+            savingResultId={savingResultId}
             onValidateSlot={validateSlot}
             onUndo={undoAcao}
-            showLocal
-            kindLabel="Ação de campo"
-            emptyLabel="Nenhuma ação de campo cadastrada no catálogo."
+            onEdit={setEditingAction}
+            onSaveResult={saveActionResult}
+            emptyLabel="Nenhuma ação cadastrada nesta semana — use o formulário acima."
           />
-          <AcaoList
-            loading={loading}
-            actions={trainingActions}
-            brokers={apiBrokers}
-            pendingSlot={pendingSlot}
-            onValidateSlot={validateSlot}
-            onUndo={undoAcao}
-            showLocal={false}
-            kindLabel="Treinamento"
-            emptyLabel="Nenhum treinamento cadastrado no catálogo."
-          />
-        </>
-      ) : (
-        <AcaoList
-          loading={loading}
-          actions={acaoActions}
-          brokers={apiBrokers}
-          pendingSlot={pendingSlot}
-          onValidateSlot={validateSlot}
-          onUndo={undoAcao}
-          showLocal
-          kindLabel="Ação de campo"
-          emptyLabel="Nenhuma ação de campo cadastrada no catálogo."
+        </div>
+      </section>
+
+      {editingAction && (
+        <ActionEditDialog
+          action={editingAction}
+          pending={savingEditId === editingAction.id}
+          onCancel={() => setEditingAction(null)}
+          onSave={saveActionEdit}
         />
       )}
 
@@ -1049,32 +1120,355 @@ function SemNav({
   );
 }
 
-// ============= AÇÃO LIST (API) =============
+// ============= AÇÃO LIST (weekly_actions) =============
 
 type SlotDraft = { local: string; participantIds: string[] };
 
+type OfflineActionCreateFormProps = {
+  formTag: string;
+  formDate: string;
+  formObjetivo: string;
+  formUnidade: ObjectiveUnit;
+  formText: string;
+  disabled: boolean;
+  creating: boolean;
+  onTagChange: (value: string) => void;
+  onDateChange: (value: string) => void;
+  onObjetivoChange: (value: string) => void;
+  onUnidadeChange: (value: ObjectiveUnit) => void;
+  onTextChange: (value: string) => void;
+  onAdd: () => void;
+};
+
+function OfflineActionCreateForm({
+  formTag,
+  formDate,
+  formObjetivo,
+  formUnidade,
+  formText,
+  disabled,
+  creating,
+  onTagChange,
+  onDateChange,
+  onObjetivoChange,
+  onUnidadeChange,
+  onTextChange,
+  onAdd,
+}: OfflineActionCreateFormProps) {
+  return (
+    <div className="offline-create-form">
+      <div className="acoes-form">
+        <div className="acoes-form-head">
+          <span className="acoes-form-eyebrow">Nova ação offline</span>
+          <span className="acoes-form-hint">
+            Cadastro compartilhado com <strong>Ações da Semana</strong> — pressione <kbd>Enter</kbd>{" "}
+            na descrição para adicionar
+          </span>
+        </div>
+        <div className="acoes-form-grid">
+          <div className="acoes-field">
+            <label htmlFor="offline-acao-tag">Tipo de ação</label>
+            <select
+              id="offline-acao-tag"
+              value={formTag}
+              onChange={(e) => onTagChange(e.target.value)}
+              disabled={disabled}
+            >
+              {WEEKLY_ACTION_CATEGORIES.map((cat) => (
+                <optgroup key={cat.key} label={`── ${cat.label} ──`}>
+                  {cat.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div className="acoes-field">
+            <label htmlFor="offline-acao-date">Data</label>
+            <input
+              id="offline-acao-date"
+              type="date"
+              value={formDate}
+              onChange={(e) => onDateChange(e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+          <div className="acoes-field">
+            <label htmlFor="offline-acao-objetivo">Objetivo</label>
+            <div className="acoes-objetivo-group">
+              <input
+                id="offline-acao-objetivo"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={formObjetivo}
+                onChange={(e) => onObjetivoChange(e.target.value)}
+                placeholder="Ex: 30"
+                disabled={disabled}
+              />
+              <select
+                id="offline-acao-unidade"
+                aria-label="Unidade do objetivo"
+                value={formUnidade}
+                onChange={(e) => onUnidadeChange(e.target.value as ObjectiveUnit)}
+                disabled={disabled}
+              >
+                {OBJECTIVE_UNITS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="acoes-field acoes-field-span2">
+            <label htmlFor="offline-acao-text">Descrição da ação</label>
+            <input
+              id="offline-acao-text"
+              type="text"
+              value={formText}
+              onChange={(e) => onTextChange(e.target.value)}
+              placeholder="Ex: Panfletagem no Shopping Vila Olímpia com 3 promotoras…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !creating && !disabled) {
+                  e.preventDefault();
+                  onAdd();
+                }
+              }}
+              disabled={disabled}
+            />
+          </div>
+          <div className="acoes-field acoes-field-add">
+            <button
+              type="button"
+              className="acoes-btn acoes-btn-add"
+              onClick={onAdd}
+              disabled={disabled}
+            >
+              <Plus size={14} strokeWidth={2.5} aria-hidden />
+              {creating ? "Adicionando…" : "Adicionar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ActionEditDraft = {
+  actionType: string;
+  plannedDate: string;
+  objective: string;
+  unit: ObjectiveUnit;
+  description: string;
+};
+
+type ActionEditDialogProps = {
+  action: WeeklyActionDTO;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (action: WeeklyActionDTO, draft: ActionEditDraft) => void;
+};
+
+function actionToEditDraft(action: WeeklyActionDTO): ActionEditDraft {
+  const unit = (action.objective_type as ObjectiveUnit | null) ?? "leads";
+  return {
+    actionType: action.action_type,
+    plannedDate: action.planned_date ?? "",
+    objective: action.objective ?? "",
+    unit: OBJECTIVE_UNITS.some((u) => u.value === unit) ? unit : "leads",
+    description: action.description ?? "",
+  };
+}
+
+function ActionEditDialog({ action, pending, onCancel, onSave }: ActionEditDialogProps) {
+  const [draft, setDraft] = useState<ActionEditDraft>(() => actionToEditDraft(action));
+  const [syncedActionId, setSyncedActionId] = useState(action.id);
+
+  // Reseta o rascunho ao trocar a ação em edição derivando o estado durante a
+  // render (padrão recomendado) em vez de sincronizar via efeito.
+  if (action.id !== syncedActionId) {
+    setSyncedActionId(action.id);
+    setDraft(actionToEditDraft(action));
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    globalThis.addEventListener("keydown", onKey);
+    return () => globalThis.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(action, draft);
+  };
+
+  if (typeof document === "undefined") return null;
+
+  const node = (
+    <div
+      className="acoes-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="action-edit-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <form
+        className="acoes-modal"
+        style={{ textAlign: "left", maxWidth: 560 }}
+        onSubmit={handleSubmit}
+      >
+        <header style={{ marginBottom: 16 }}>
+          <h3 id="action-edit-title" className="acoes-modal-title" style={{ textAlign: "left" }}>
+            Editar ação
+          </h3>
+          <p className="acoes-modal-body" style={{ textAlign: "left", margin: 0 }}>
+            {action.action_type}
+          </p>
+        </header>
+
+        <div className="acoes-form-grid" style={{ marginBottom: 18 }}>
+          <div className="acoes-field">
+            <label htmlFor="edit-acao-tag">Tipo de ação</label>
+            <select
+              id="edit-acao-tag"
+              value={draft.actionType}
+              onChange={(e) => setDraft((d) => ({ ...d, actionType: e.target.value }))}
+              disabled={pending}
+            >
+              {WEEKLY_ACTION_CATEGORIES.map((cat) => (
+                <optgroup key={cat.key} label={`── ${cat.label} ──`}>
+                  {cat.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div className="acoes-field">
+            <label htmlFor="edit-acao-date">Data</label>
+            <input
+              id="edit-acao-date"
+              type="date"
+              value={draft.plannedDate}
+              onChange={(e) => setDraft((d) => ({ ...d, plannedDate: e.target.value }))}
+              disabled={pending}
+            />
+          </div>
+          <div className="acoes-field">
+            <label htmlFor="edit-acao-objetivo">Objetivo</label>
+            <div className="acoes-objetivo-group">
+              <input
+                id="edit-acao-objetivo"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={draft.objective}
+                onChange={(e) => setDraft((d) => ({ ...d, objective: e.target.value }))}
+                placeholder="Ex: 30"
+                disabled={pending}
+              />
+              <select
+                id="edit-acao-unidade"
+                aria-label="Unidade do objetivo"
+                value={draft.unit}
+                onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value as ObjectiveUnit }))}
+                disabled={pending}
+              >
+                {OBJECTIVE_UNITS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="acoes-field acoes-field-span2">
+            <label htmlFor="edit-acao-text">Descrição da ação</label>
+            <input
+              id="edit-acao-text"
+              type="text"
+              value={draft.description}
+              onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+              disabled={pending}
+            />
+          </div>
+        </div>
+
+        <div className="acoes-modal-actions" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={pending}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn--primary" disabled={pending}>
+            {pending ? "Salvando…" : "Salvar alterações"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+
+  return createPortal(node, document.body);
+}
+
+type ResultDraft = { achieved: number | null; completed: boolean; motivo: string };
+
 type AcaoListProps = {
   loading: boolean;
-  actions: ArsenalActionWithExecutions[];
+  actions: WeeklyActionDTO[];
   brokers: ArsenalBroker[];
   pendingSlot: Record<string, boolean>;
-  onValidateSlot: (
-    actionId: string,
-    weekday: number,
-    draft: SlotDraft,
-    executionId: string | null,
-  ) => Promise<boolean>;
-  onUndo: (executionId: string) => void;
-  showLocal: boolean;
-  kindLabel: string;
+  savingResultId: string | null;
+  onValidateSlot: (action: WeeklyActionDTO, draft: SlotDraft) => Promise<boolean>;
+  onUndo: (action: WeeklyActionDTO) => void;
+  onEdit: (action: WeeklyActionDTO) => void;
+  onSaveResult: (action: WeeklyActionDTO, draft: ResultDraft) => Promise<boolean>;
   emptyLabel: string;
 };
 
-function executionToDraft(execution: ArsenalExecution | null): SlotDraft {
+const CATEGORY_LABEL: Record<string, string> = {
+  campo: "Ação de campo",
+  treino: "Treinamento",
+  premio: "Premiação",
+  outro: "Outros",
+};
+
+const UNIT_ICON: Record<string, string> = {
+  leads: "📞",
+  visitas: "🏠",
+  pastas: "📄",
+  vendas: "💰",
+  corretores: "👥",
+};
+
+function actionToResultDraft(action: WeeklyActionDTO): ResultDraft {
   return {
-    local: execution?.local ?? "",
-    participantIds: execution?.participants.map((p) => p.broker_id) ?? [],
+    achieved: action.achieved,
+    completed: action.completed,
+    motivo: action.non_completion_reason ?? "",
   };
+}
+
+function actionToDraft(action: WeeklyActionDTO): SlotDraft {
+  return {
+    local: action.local ?? "",
+    participantIds: (action.participants ?? []).map((p) => p.broker_id),
+  };
+}
+
+function formatActionDate(iso: string | null): string {
+  if (!iso) return "sem data";
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
 }
 
 function AcaoList({
@@ -1082,33 +1476,43 @@ function AcaoList({
   actions,
   brokers,
   pendingSlot,
+  savingResultId,
   onValidateSlot,
   onUndo,
-  showLocal,
-  kindLabel,
+  onEdit,
+  onSaveResult,
   emptyLabel,
 }: AcaoListProps) {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraft>>({});
+  const [resultDrafts, setResultDrafts] = useState<Record<string, ResultDraft>>({});
 
-  const toggleOpen = (id: string) => setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  const mutateDraft = (
-    slotKey: string,
-    execution: ArsenalExecution | null,
-    mut: (d: SlotDraft) => SlotDraft,
-  ) => {
+  const mutateDraft = (action: WeeklyActionDTO, mut: (d: SlotDraft) => SlotDraft) => {
     setSlotDrafts((prev) => {
-      const cur = prev[slotKey] ?? executionToDraft(execution);
-      return { ...prev, [slotKey]: mut(cur) };
+      const cur = prev[action.id] ?? actionToDraft(action);
+      return { ...prev, [action.id]: mut(cur) };
     });
   };
 
-  const clearDraft = (slotKey: string) =>
-    setSlotDrafts((prev) => {
-      if (!(slotKey in prev)) return prev;
+  const mutateResultDraft = (action: WeeklyActionDTO, mut: (d: ResultDraft) => ResultDraft) => {
+    setResultDrafts((prev) => {
+      const cur = prev[action.id] ?? actionToResultDraft(action);
+      return { ...prev, [action.id]: mut(cur) };
+    });
+  };
+
+  const clearResultDraft = (actionId: string) =>
+    setResultDrafts((prev) => {
+      if (!(actionId in prev)) return prev;
       const next = { ...prev };
-      delete next[slotKey];
+      delete next[actionId];
+      return next;
+    });
+
+  const clearDraft = (actionId: string) =>
+    setSlotDrafts((prev) => {
+      if (!(actionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[actionId];
       return next;
     });
 
@@ -1127,173 +1531,240 @@ function AcaoList({
 
   return (
     <div className="ar-list">
-      {actions.map(({ action, executions }) => {
-        const isOpen = !!open[action.id];
-        const Icon = ACTION_ICON_MAP[action.icon_name] ?? Megaphone;
-        const validatedCount = executions.filter((e) => e?.is_validated).length;
-        const hasAny = validatedCount > 0;
+      {actions.map((action) => {
+        const draft = slotDrafts[action.id] ?? actionToDraft(action);
+        const resultDraft = resultDrafts[action.id] ?? actionToResultDraft(action);
+        const isValidated = Boolean(action.validated_at);
+        const isPending = !!pendingSlot[action.id];
+        const unvalidatePending = !!pendingSlot[`unvalidate__${action.id}`];
+        const isSavingResult = savingResultId === action.id;
+        const cat = API_CATEGORY_TO_UI[action.category];
+        const showLocal = cat === "campo";
+        const kindLabel = CATEGORY_LABEL[cat] ?? "Ação";
+        const unitKey = action.objective_type ?? "";
+        const unitIcon = unitKey ? (UNIT_ICON[unitKey] ?? "") : "";
+        const savedResult = actionToResultDraft(action);
+        const resultDirty =
+          action.id in resultDrafts &&
+          (resultDraft.achieved !== savedResult.achieved ||
+            resultDraft.completed !== savedResult.completed ||
+            resultDraft.motivo !== savedResult.motivo);
+        const canValidate =
+          !isValidated &&
+          !isPending &&
+          draft.participantIds.length > 0 &&
+          (!showLocal || draft.local.trim().length > 0);
 
         return (
           <article
             key={action.id}
             className="ar-row"
-            data-accent={action.accent}
-            data-validated={hasAny}
+            data-accent={cat === "treino" ? "violet" : "emerald"}
+            data-validated={isValidated}
           >
-            <button
-              type="button"
-              className="ar-row-head"
-              onClick={() => toggleOpen(action.id)}
-              aria-expanded={isOpen}
-            >
+            <div className="ar-row-head">
               <span className="ar-row-ico" aria-hidden>
-                <Icon size={20} strokeWidth={1.75} />
+                <Megaphone size={20} strokeWidth={1.75} />
               </span>
               <div className="ar-row-text">
-                <div className="ar-row-name">{action.nome}</div>
+                <div className="ar-row-name">{action.action_type}</div>
                 <div className="ar-row-meta">
                   <span className="ar-row-kind">{kindLabel}</span>
-                  {hasAny && (
+                  <span className="ar-row-tag">
+                    <CalendarDays size={12} strokeWidth={2} />
+                    {formatActionDate(action.planned_date)}
+                  </span>
+                  {isValidated && (
                     <span className="ar-row-tag">
                       <ShieldCheck size={12} strokeWidth={2} />
-                      {validatedCount} validações
+                      validada
+                    </span>
+                  )}
+                  {action.achieved !== null && (
+                    <span className="ar-result-badge">
+                      <Target size={11} strokeWidth={2.5} />
+                      {action.achieved}
+                      {unitKey ? ` ${unitKey}` : ""}
                     </span>
                   )}
                 </div>
               </div>
-              <span className="ar-row-chev" aria-hidden>
-                {isOpen ? (
-                  <ChevronUp size={16} strokeWidth={2} />
-                ) : (
-                  <ChevronDown size={16} strokeWidth={2} />
-                )}
-              </span>
-            </button>
+              {!isValidated && (
+                <div className="ar-row-actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--xs"
+                    onClick={() => onEdit(action)}
+                    aria-label={`Editar ${action.action_type}`}
+                  >
+                    <Pencil size={13} strokeWidth={2} /> Editar
+                  </button>
+                </div>
+              )}
+            </div>
 
-            {isOpen && (
-              <div className="ar-row-body">
-                <p className="ar-row-desc">{action.descricao}</p>
-                <div className="ar-row-tags">
+            <div className="ar-row-body">
+              {action.description ? <p className="ar-row-desc">{action.description}</p> : null}
+              <div className="ar-row-tags">
+                {action.objective ? (
                   <span className="ar-row-tag-soft">
-                    <ListChecks size={12} strokeWidth={2} /> {action.resultado}
+                    <ListChecks size={12} strokeWidth={2} /> {action.objective}
+                    {action.objective_type ? ` ${action.objective_type}` : ""}
                   </span>
-                  {action.custo && (
-                    <span className="ar-row-tag-soft ar-row-tag-soft--cost">
-                      <CircleDollarSign size={12} strokeWidth={2} /> {action.custo}
+                ) : null}
+              </div>
+
+              <div className="ar-result-block">
+                <div className="ar-result-field">
+                  <label htmlFor={`result-${action.id}`}>Realizado</label>
+                  <div className="ar-result-input-wrap">
+                    <input
+                      id={`result-${action.id}`}
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={resultDraft.achieved !== null ? String(resultDraft.achieved) : ""}
+                      placeholder="—"
+                      disabled={isSavingResult}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        mutateResultDraft(action, (d) => ({
+                          ...d,
+                          achieved: raw === "" ? null : Math.max(0, Number(raw) || 0),
+                        }));
+                      }}
+                    />
+                    <span className="ar-result-unit">
+                      {unitIcon ? <span aria-hidden>{unitIcon}</span> : null}
+                      {unitKey || "unidade"}
                     </span>
-                  )}
+                  </div>
                 </div>
-
-                <div className="ar-day-list">
-                  {DIAS_SEMANA.map((dia, idx) => {
-                    const weekday = WEEKDAY_BY_DIA[dia];
-                    const execution = executions[idx] ?? null;
-                    const slotKey = executionSlotKey(action.id, weekday);
-                    const isPending = !!pendingSlot[slotKey];
-                    const isValidated = execution?.is_validated ?? false;
-                    const unvalidatePending =
-                      execution && !!pendingSlot[`unvalidate__${execution.id}`];
-
-                    const draft = slotDrafts[slotKey] ?? executionToDraft(execution);
-                    const canValidate =
-                      !isValidated &&
-                      !isPending &&
-                      draft.participantIds.length > 0 &&
-                      (!showLocal || draft.local.trim().length > 0);
-
-                    return (
-                      <div
-                        key={dia}
-                        className="ar-day-row"
-                        data-validated={isValidated}
-                        data-kind={showLocal ? "acao" : "treinamento"}
-                      >
-                        <span className="ar-day-name">{dia}</span>
-
-                        {showLocal && (
-                          <label className="ar-day-local">
-                            <MapPin size={13} strokeWidth={1.75} />
-                            <input
-                              type="text"
-                              placeholder="Local / endereço"
-                              value={draft.local}
-                              disabled={isValidated || isPending}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                mutateDraft(slotKey, execution, (d) => ({
-                                  ...d,
-                                  local: val,
-                                }));
-                              }}
-                            />
-                          </label>
-                        )}
-
-                        <div className="ar-corr-grid">
-                          {brokers.length === 0 && (
-                            <span className="ar-corr-empty">
-                              Cadastre corretores acima para selecioná-los.
-                            </span>
-                          )}
-                          {brokers.map((b) => {
-                            const selected = draft.participantIds.includes(b.broker_id);
-                            return (
-                              <button
-                                key={b.broker_id}
-                                type="button"
-                                className="ar-corr-chip"
-                                data-selected={selected}
-                                disabled={isValidated || isPending}
-                                onClick={() =>
-                                  mutateDraft(slotKey, execution, (d) => ({
-                                    ...d,
-                                    participantIds: d.participantIds.includes(b.broker_id)
-                                      ? d.participantIds.filter((id) => id !== b.broker_id)
-                                      : [...d.participantIds, b.broker_id],
-                                  }))
-                                }
-                              >
-                                {b.nome}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="ar-day-action">
-                          {isValidated && execution ? (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--xs"
-                              onClick={() => onUndo(execution.id)}
-                              disabled={!!unvalidatePending}
-                            >
-                              <X size={13} strokeWidth={2} /> Desfazer
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn--success btn--xs"
-                              onClick={async () => {
-                                const ok = await onValidateSlot(
-                                  action.id,
-                                  weekday,
-                                  draft,
-                                  execution?.id ?? null,
-                                );
-                                if (ok) clearDraft(slotKey);
-                              }}
-                              disabled={!canValidate}
-                            >
-                              <Check size={13} strokeWidth={2.25} /> Validar
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <label className="ar-result-done">
+                  <input
+                    type="checkbox"
+                    checked={resultDraft.completed}
+                    disabled={isSavingResult}
+                    onChange={(e) =>
+                      mutateResultDraft(action, (d) => ({ ...d, completed: e.target.checked }))
+                    }
+                  />
+                  Ação realizada
+                </label>
+                {!resultDraft.completed && (
+                  <div className="ar-result-field ar-result-motivo">
+                    <label htmlFor={`motivo-${action.id}`}>
+                      Motivo (obrigatório se não realizada)
+                    </label>
+                    <input
+                      id={`motivo-${action.id}`}
+                      type="text"
+                      value={resultDraft.motivo}
+                      placeholder="Ex: Falta de equipe, cancelamento…"
+                      disabled={isSavingResult}
+                      onChange={(e) =>
+                        mutateResultDraft(action, (d) => ({ ...d, motivo: e.target.value }))
+                      }
+                    />
+                  </div>
+                )}
+                <div className="ar-result-save">
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--xs"
+                    disabled={isSavingResult || !resultDirty}
+                    onClick={async () => {
+                      const ok = await onSaveResult(action, resultDraft);
+                      if (ok) clearResultDraft(action.id);
+                    }}
+                  >
+                    <Save size={13} strokeWidth={2.5} />
+                    {isSavingResult ? "Salvando…" : "Salvar resultado"}
+                  </button>
                 </div>
               </div>
-            )}
+
+              <div className="ar-day-list">
+                <div
+                  className="ar-day-row"
+                  data-validated={isValidated}
+                  data-kind={showLocal ? "acao" : "treinamento"}
+                >
+                  <span className="ar-day-name">{formatActionDate(action.planned_date)}</span>
+
+                  {showLocal && (
+                    <label className="ar-day-local">
+                      <MapPin size={13} strokeWidth={1.75} />
+                      <input
+                        type="text"
+                        placeholder="Local / endereço"
+                        value={draft.local}
+                        disabled={isValidated || isPending}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          mutateDraft(action, (d) => ({ ...d, local: val }));
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  <div className="ar-corr-grid">
+                    {brokers.length === 0 && (
+                      <span className="ar-corr-empty">
+                        Cadastre corretores acima para selecioná-los.
+                      </span>
+                    )}
+                    {brokers.map((b) => {
+                      const selected = draft.participantIds.includes(b.broker_id);
+                      return (
+                        <button
+                          key={b.broker_id}
+                          type="button"
+                          className="ar-corr-chip"
+                          data-selected={selected}
+                          disabled={isValidated || isPending}
+                          onClick={() =>
+                            mutateDraft(action, (d) => ({
+                              ...d,
+                              participantIds: d.participantIds.includes(b.broker_id)
+                                ? d.participantIds.filter((id) => id !== b.broker_id)
+                                : [...d.participantIds, b.broker_id],
+                            }))
+                          }
+                        >
+                          {b.nome}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="ar-day-action">
+                    {isValidated ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--xs"
+                        onClick={() => onUndo(action)}
+                        disabled={unvalidatePending}
+                      >
+                        <X size={13} strokeWidth={2} /> Desfazer
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn--success btn--xs"
+                        onClick={async () => {
+                          const ok = await onValidateSlot(action, draft);
+                          if (ok) clearDraft(action.id);
+                        }}
+                        disabled={!canValidate}
+                      >
+                        <Check size={13} strokeWidth={2.25} /> Validar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </article>
         );
       })}
