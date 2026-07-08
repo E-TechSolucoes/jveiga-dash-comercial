@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function ArsenalPage() {
-  redirect("/dashboard/acoes-offline?section=cadastro");
+export default function ArsenalRedirectPage() {
+  redirect("/dashboard/gestao-acoes");
 }

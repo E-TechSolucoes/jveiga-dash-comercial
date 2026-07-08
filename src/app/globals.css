@@ -8640,3 +8640,40 @@ body {
 .acoes-tab--embedded .acoes-stats {
   margin-top: 0;
 }
+
+.gestao-acoes-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+.gestao-acoes-outbound {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid #d8e0ec;
+}
+
+.gestao-acoes-outbound-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gestao-acoes-outbound-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.gestao-acoes-outbound-sub {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-mute);
+}

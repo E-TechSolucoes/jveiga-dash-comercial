@@ -45,6 +45,7 @@ import type { RealEstateAgency } from "@/lib/imob/api";
 import {
   OBJECTIVE_UNITS,
   createWeeklyAction,
+  deleteWeeklyAction,
   listWeeklyActions,
   unvalidateWeeklyAction,
   updateWeeklyAction,
@@ -246,6 +247,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
   const [editingAction, setEditingAction] = useState<WeeklyActionDTO | null>(null);
   const [savingResultId, setSavingResultId] = useState<string | null>(null);
   const [savingEditId, setSavingEditId] = useState<string | null>(null);
+  const [deletingActionId, setDeletingActionId] = useState<string | null>(null);
 
   const saveBrokerEdit = async (
     broker: ArsenalBroker,
@@ -356,7 +358,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       setFormObjetivo("");
       setFormUnidade("leads");
       setFormDate("");
-      showToast("success", "Ação cadastrada em Ações da Semana.");
+      showToast("success", "Ação cadastrada.");
     } catch (e: unknown) {
       showToast("error", errorMessage(e));
     } finally {
@@ -473,6 +475,25 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
       showToast("error", errorMessage(e));
     } finally {
       setSavingEditId(null);
+    }
+  };
+
+  const removeAction = async (action: WeeklyActionDTO) => {
+    if (action.validated_at) {
+      showToast("error", "Desfaça a validação antes de remover a ação.");
+      return;
+    }
+    setDeletingActionId(action.id);
+    try {
+      await deleteWeeklyAction(action.id);
+      setWeeklyActions((prev) => prev.filter((a) => a.id !== action.id));
+      if (editingAction?.id === action.id) setEditingAction(null);
+      bumpResource("weekly-actions");
+      showToast("success", "Ação removida.");
+    } catch (e: unknown) {
+      showToast("error", errorMessage(e));
+    } finally {
+      setDeletingActionId(null);
     }
   };
 
@@ -609,9 +630,11 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
             brokers={apiBrokers}
             pendingSlot={pendingSlot}
             savingResultId={savingResultId}
+            deletingActionId={deletingActionId}
             onValidateSlot={validateSlot}
             onUndo={undoAcao}
             onEdit={setEditingAction}
+            onDelete={removeAction}
             onSaveResult={saveActionResult}
             emptyLabel="Nenhuma ação cadastrada nesta semana — use o formulário acima."
           />
@@ -1159,10 +1182,9 @@ function OfflineActionCreateForm({
     <div className="offline-create-form">
       <div className="acoes-form">
         <div className="acoes-form-head">
-          <span className="acoes-form-eyebrow">Nova ação offline</span>
+          <span className="acoes-form-eyebrow">Nova ação</span>
           <span className="acoes-form-hint">
-            Cadastro compartilhado com <strong>Ações da Semana</strong> — pressione <kbd>Enter</kbd>{" "}
-            na descrição para adicionar
+            Pressione <kbd>Enter</kbd> na descrição para adicionar
           </span>
         </div>
         <div className="acoes-form-grid">
@@ -1428,9 +1450,11 @@ type AcaoListProps = {
   brokers: ArsenalBroker[];
   pendingSlot: Record<string, boolean>;
   savingResultId: string | null;
+  deletingActionId: string | null;
   onValidateSlot: (action: WeeklyActionDTO, draft: SlotDraft) => Promise<boolean>;
   onUndo: (action: WeeklyActionDTO) => void;
   onEdit: (action: WeeklyActionDTO) => void;
+  onDelete: (action: WeeklyActionDTO) => void;
   onSaveResult: (action: WeeklyActionDTO, draft: ResultDraft) => Promise<boolean>;
   emptyLabel: string;
 };
@@ -1477,9 +1501,11 @@ function AcaoList({
   brokers,
   pendingSlot,
   savingResultId,
+  deletingActionId,
   onValidateSlot,
   onUndo,
   onEdit,
+  onDelete,
   onSaveResult,
   emptyLabel,
 }: AcaoListProps) {
@@ -1598,6 +1624,17 @@ function AcaoList({
                     aria-label={`Editar ${action.action_type}`}
                   >
                     <Pencil size={13} strokeWidth={2} /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--xs"
+                    onClick={() => onDelete(action)}
+                    disabled={deletingActionId === action.id}
+                    aria-label={`Remover ${action.action_type}`}
+                    title={deletingActionId === action.id ? "Removendo…" : "Remover"}
+                  >
+                    <Trash2 size={13} strokeWidth={2} />
+                    {deletingActionId === action.id ? "Removendo…" : "Remover"}
                   </button>
                 </div>
               )}

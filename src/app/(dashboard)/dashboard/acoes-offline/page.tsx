@@ -1,16 +1,13 @@
-import { AcoesOfflineShell } from "./_components/acoes-offline-shell";
-import type { SubTabId } from "./_components/acoes-offline-tab";
+import { redirect } from "next/navigation";
 
 type Props = {
   searchParams: Promise<{ section?: string }>;
 };
 
-function initialSubFromSection(section: string | undefined): SubTabId {
-  return section === "resultado" ? "resultado" : "cadastro";
-}
-
-export default async function AcoesOfflinePage({ searchParams }: Props) {
+export default async function AcoesOfflineRedirectPage({ searchParams }: Props) {
   const { section } = await searchParams;
-
-  return <AcoesOfflineShell initialSub={initialSubFromSection(section)} />;
+  if (section === "resultado") {
+    redirect("/dashboard/gestao-acoes?section=resultado");
+  }
+  redirect("/dashboard/gestao-acoes");
 }

@@ -4,8 +4,7 @@ export type TabId =
   | "recep"
   | "auditoria"
   | "pastas"
-  | "acoes-semana"
-  | "acoes-offline"
+  | "gestao-acoes"
   | "imob"
   | "conhecimento";
 
