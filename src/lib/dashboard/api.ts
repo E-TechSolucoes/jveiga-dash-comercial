@@ -154,9 +154,12 @@ export async function getTaxas(
   signal?: AbortSignal,
 ): Promise<Taxas> {
   const qs = new URLSearchParams({ codigos: codigos.join(","), nomes: nomes.join("||") });
-  const data = await fetchDashboardJson<{ taxas?: { lv?: number; vp?: number; pv?: number } }>(
-    `/api/dashboard/taxas?${qs.toString()}`,
-    signal,
+  // Shared Go backend endpoint (bounded by the global funnel_config window),
+  // replacing the old direct-BigQuery Next route. Same {taxas:{lv,vp,pv}} shape,
+  // and authed via apiFetch exactly like getFunil below.
+  const data = await apiFetch<{ taxas?: { lv?: number; vp?: number; pv?: number } }>(
+    `/api/v1/dashboard/taxas?${qs.toString()}`,
+    { signal, cache: "no-store" },
   );
   const t = data.taxas ?? {};
   return {
