@@ -4,11 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   LEAD_AUDIT_PAGE_SIZE,
+  createLeadAuditLead,
+  deleteLeadAuditLead,
   getLeadAudit,
   getLeadAuditFieldOptions,
   importLeadAuditSpreadsheet,
   patchLeadAuditLead,
   validateAllLeadAudit,
+  type CreateLeadAuditPayload,
   type PatchLeadAuditPayload,
 } from "@/lib/lead-audit/api";
 
@@ -46,6 +49,22 @@ export function usePatchLeadAuditLead() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: PatchLeadAuditPayload }) =>
       patchLeadAuditLead(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LEAD_AUDIT_KEY }),
+  });
+}
+
+export function useCreateLeadAuditLead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateLeadAuditPayload) => createLeadAuditLead(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LEAD_AUDIT_KEY }),
+  });
+}
+
+export function useDeleteLeadAuditLead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteLeadAuditLead(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: LEAD_AUDIT_KEY }),
   });
 }

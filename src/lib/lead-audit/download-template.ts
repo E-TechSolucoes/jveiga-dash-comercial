@@ -1,24 +1,12 @@
 /**
- * Gera um arquivo Excel (SpreadsheetML) compatível com o importador de auditoria.
- * Abre direto no Excel/LibreOffice sem dependências extras no frontend.
+ * Modelo mínimo da auditoria: só dados do CV.
+ * Liguei? / WhatsApp / Atendimento / Contato / Quer conhecer? / Reconectar
+ * são preenchidos na tela depois do upload.
  */
 
-const HEADERS = [
-  "Data",
-  "Nome",
-  "Telefone",
-  "Origem",
-  "Situação",
-  "", // coluna de observação do CV (cabeçalho vazio)
-  "Liguei?",
-  "WhatsApp",
-  "Como foi o atendimento?",
-  "Alguém entrou em contato?",
-  "Quer conhecer?",
-  "Conectei com o time de vendas?",
-] as const;
+const HEADERS = ["Data", "Nome", "Telefone", "Origem", "Situação", "Obs"] as const;
 
-/** Linhas de exemplo — podem ser apagadas antes do upload real. */
+/** Linhas de exemplo — apague antes do upload real. */
 const SAMPLE_ROWS: string[][] = [
   [
     "08/04/2026",
@@ -27,72 +15,30 @@ const SAMPLE_ROWS: string[][] = [
     "Facebook",
     "Aguardando Atendimento",
     "tem interesse",
-    "Sim",
-    "-",
-    "tem interesse e quer saber mais a respeito do projeto",
-    "Não",
-    "Sim",
-    "Agendado",
   ],
-  [
-    "09/04/2026",
-    "Roseli",
-    "+5511951680021",
-    "Facebook",
-    "Aguardando Atendimento",
-    "caixa postal",
-    "Caixa postal",
-    "Sim",
-    "não tem interesse",
-    "Não",
-    "Não",
-    "Recusou",
-  ],
+  ["09/04/2026", "Roseli", "+5511951680021", "Facebook", "Aguardando Atendimento", "caixa postal"],
 ];
 
-function xmlEscape(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }
 
-function rowXml(cells: readonly string[]): string {
-  const inner = cells
-    .map((cell) => `<Cell><Data ss:Type="String">${xmlEscape(cell)}</Data></Cell>`)
-    .join("");
-  return `<Row>${inner}</Row>`;
+function buildCsv(): string {
+  const lines = [HEADERS.map(csvEscape).join(",")];
+  for (const row of SAMPLE_ROWS) {
+    lines.push(row.map(csvEscape).join(","));
+  }
+  return lines.join("\r\n");
 }
 
-function buildSpreadsheetXml(): string {
-  const headerRow = rowXml(HEADERS);
-  const dataRows = SAMPLE_ROWS.map((r) => rowXml(r)).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles>
-  <Style ss:ID="Header">
-   <Font ss:Bold="1"/>
-  </Style>
- </Styles>
- <Worksheet ss:Name="Auditoria">
-  <Table>
-   ${headerRow}
-   ${dataRows}
-  </Table>
- </Worksheet>
-</Workbook>`;
-}
-
-export const LEAD_AUDIT_TEMPLATE_FILENAME = "modelo-auditoria-leads.xls";
+export const LEAD_AUDIT_TEMPLATE_FILENAME = "modelo-auditoria-leads.csv";
 
 export function downloadLeadAuditTemplate(): void {
-  const xml = buildSpreadsheetXml();
-  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const csv = `\uFEFF${buildCsv()}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -104,4 +50,4 @@ export function downloadLeadAuditTemplate(): void {
   URL.revokeObjectURL(url);
 }
 
-export const LEAD_AUDIT_TEMPLATE_COLUMNS = HEADERS.filter(Boolean).join(", ");
+export const LEAD_AUDIT_TEMPLATE_COLUMNS = HEADERS.join(", ");
