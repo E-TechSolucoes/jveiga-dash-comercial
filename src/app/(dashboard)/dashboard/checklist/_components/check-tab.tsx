@@ -4,19 +4,20 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import {
   AlertCircle,
-  Award,
   Building2,
   Calendar,
   CheckCheck,
   CheckCircle2,
   Clock,
+  Flame,
   History,
-  Info,
   Lock,
   ShieldCheck,
   Sparkles,
-  Sun,
+  Star,
+  Target,
   Trophy,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -111,6 +112,244 @@ function toDivergentMap(rows: CheckRow[]): StateMap {
 
 function toChecksMap(rows: CheckRow[]): StateMap {
   return Object.fromEntries(rows.map((it) => [it.code, it.is_checked]));
+}
+
+const QUEST_XP_PER: Record<ChecklistType, number> = {
+  diario: 25,
+  base: 20,
+  premiacao: 30,
+};
+
+type QuestStage = { at: number; id: string; short: string };
+
+const QUEST_STAGES: Record<ChecklistType, readonly QuestStage[]> = {
+  diario: [
+    { at: 0, id: "lobby", short: "Lobby" },
+    { at: 25, id: "campo", short: "Campo" },
+    { at: 50, id: "ritmo", short: "Ritmo" },
+    { at: 75, id: "boss", short: "Boss" },
+    { at: 100, id: "lendario", short: "Lendário" },
+  ],
+  base: [
+    { at: 0, id: "lobby", short: "Lobby" },
+    { at: 25, id: "fundacao", short: "Fundação" },
+    { at: 50, id: "muros", short: "Muros" },
+    { at: 75, id: "torre", short: "Torre" },
+    { at: 100, id: "blindado", short: "Blindado" },
+  ],
+  premiacao: [
+    { at: 0, id: "lobby", short: "Lobby" },
+    { at: 25, id: "setup", short: "Setup" },
+    { at: 50, id: "palco", short: "Palco" },
+    { at: 75, id: "spotlight", short: "Spotlight" },
+    { at: 100, id: "lendario", short: "Lendário" },
+  ],
+};
+
+type QuestMeta = {
+  percent: number;
+  xp: number;
+  xpMax: number;
+  xpPer: number;
+  stageId: string;
+  stage: string;
+  tip: string;
+  rank: string;
+  stages: readonly QuestStage[];
+  eyebrow: string;
+  title: string;
+  missionTitle: string;
+  winTitle: string;
+  winHint: string;
+  runLabel: string;
+};
+
+function buildQuestMeta(kind: ChecklistType, done: number, total: number): QuestMeta {
+  const xpPer = QUEST_XP_PER[kind];
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+  const xp = done * xpPer;
+  const xpMax = Math.max(total, 1) * xpPer;
+  const stages = QUEST_STAGES[kind];
+
+  const copy =
+    kind === "base"
+      ? {
+          eyebrow: "Fortaleza do stand",
+          title: "Base impenetrável",
+          missionTitle: "Missão — Base do Estande",
+          winTitle: "Fortaleza concluída!",
+          winHint: "valide pra blindar o accountability",
+          runLabel: "da fortaleza",
+          tiers: [
+            {
+              min: 100,
+              stageId: "blindado",
+              stage: "Stand blindado",
+              tip: "Base impenetrável — valide e registre.",
+              rank: "S",
+            },
+            {
+              min: 75,
+              stageId: "torre",
+              stage: "Torre alta",
+              tip: "Quase blindado — últimos checks da base.",
+              rank: "A",
+            },
+            {
+              min: 50,
+              stageId: "muros",
+              stage: "Muros firmes",
+              tip: "Metade da fortaleza — mantém o combo.",
+              rank: "B",
+            },
+            {
+              min: 25,
+              stageId: "fundacao",
+              stage: "Fundação",
+              tip: "Base em construção — um tijolo por vez.",
+              rank: "C",
+            },
+            {
+              min: 1,
+              stageId: "aquecimento",
+              stage: "Abrindo obra",
+              tip: "Combo iniciado — segue conferindo.",
+              rank: "D",
+            },
+            {
+              min: 0,
+              stageId: "lobby",
+              stage: "Lobby",
+              tip: "Toque o 1º item e comece a fortaleza.",
+              rank: "—",
+            },
+          ],
+        }
+      : kind === "premiacao"
+        ? {
+            eyebrow: "Ritual de ouro",
+            title: "Cerimônia de terça",
+            missionTitle: "Missão — Premiação Semanal",
+            winTitle: "Cerimônia lendária!",
+            winHint: "valide pra gravar o ritual no log",
+            runLabel: "do ritual",
+            tiers: [
+              {
+                min: 100,
+                stageId: "lendario",
+                stage: "Ritual lendário",
+                tip: "Cerimônia pronta — valide e feche o dia.",
+                rank: "S",
+              },
+              {
+                min: 75,
+                stageId: "spotlight",
+                stage: "Spotlight",
+                tip: "Quase no palco — últimos preparativos.",
+                rank: "A",
+              },
+              {
+                min: 50,
+                stageId: "palco",
+                stage: "Palco montado",
+                tip: "Metade do ritual — mantém o combo.",
+                rank: "B",
+              },
+              {
+                min: 25,
+                stageId: "setup",
+                stage: "Setup",
+                tip: "Preparativos em andamento.",
+                rank: "C",
+              },
+              {
+                min: 1,
+                stageId: "aquecimento",
+                stage: "Aquecendo",
+                tip: "Combo iniciado — segue o checklist.",
+                rank: "D",
+              },
+              {
+                min: 0,
+                stageId: "lobby",
+                stage: "Lobby",
+                tip: "Toque o 1º item e comece o ritual.",
+                rank: "—",
+              },
+            ],
+          }
+        : {
+            eyebrow: "Missão do stand",
+            title: "Run de hoje",
+            missionTitle: "Missão — Rotina Diária",
+            winTitle: "Missão do dia concluída!",
+            winHint: "valide pra fechar a run no log",
+            runLabel: "da run",
+            tiers: [
+              {
+                min: 100,
+                stageId: "lendario",
+                stage: "Dia lendário",
+                tip: "Run completa — valide e grave o accountability.",
+                rank: "S",
+              },
+              {
+                min: 75,
+                stageId: "boss",
+                stage: "Boss final",
+                tip: "Últimos checks — fecha a missão do dia.",
+                rank: "A",
+              },
+              {
+                min: 50,
+                stageId: "ritmo",
+                stage: "Ritmo alto",
+                tip: "Metade feita — mantém o combo ligado.",
+                rank: "B",
+              },
+              {
+                min: 25,
+                stageId: "campo",
+                stage: "Em campo",
+                tip: "Missão em andamento — um check de cada vez.",
+                rank: "C",
+              },
+              {
+                min: 1,
+                stageId: "aquecimento",
+                stage: "Aquecendo",
+                tip: "Combo iniciado — continua marcando.",
+                rank: "D",
+              },
+              {
+                min: 0,
+                stageId: "lobby",
+                stage: "Lobby",
+                tip: "Toque o 1º item e comece a run do stand.",
+                rank: "—",
+              },
+            ],
+          };
+
+  const tier = copy.tiers.find((t) => percent >= t.min) ?? copy.tiers[copy.tiers.length - 1]!;
+
+  return {
+    percent,
+    xp,
+    xpMax,
+    xpPer,
+    stageId: tier.stageId,
+    stage: tier.stage,
+    tip: tier.tip,
+    rank: tier.rank,
+    stages,
+    eyebrow: copy.eyebrow,
+    title: copy.title,
+    missionTitle: copy.missionTitle,
+    winTitle: copy.winTitle,
+    winHint: copy.winHint,
+    runLabel: copy.runLabel,
+  };
 }
 
 export function CheckTab({ comercialName, empreendimentoIds }: Props) {
@@ -362,7 +601,8 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
   const done = countDone(currentMap, currentItems);
   const total = currentItems.length;
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+  const quest = useMemo(() => buildQuestMeta(sub, done, total), [sub, done, total]);
+  const questTheme = sub === "base" ? "base" : sub === "premiacao" ? "prem" : "diario";
 
   const meta = CHECKLIST_META[sub];
 
@@ -481,80 +721,81 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         </button>
       </div>
 
-      {/* INFO BANNER — BASE (Estande) */}
-      {sub === "base" && (
-        <div className="ck-base-banner">
-          <div className="ck-base-banner-ico" aria-hidden>
+      {/* QUEST BANNER */}
+      <div
+        className={[
+          "ck-quest-banner",
+          sub === "diario" ? "ck-quest-banner--diario" : "",
+          sub === "base" ? "ck-quest-banner--base" : "",
+          sub === "premiacao" ? "ck-quest-banner--prem" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-theme={questTheme}
+        data-stage={quest.stageId}
+      >
+        <div className="ck-quest-banner-ico" aria-hidden>
+          {quest.percent >= 100 ? (
+            <Trophy size={22} strokeWidth={2} />
+          ) : quest.percent >= 50 ? (
+            <Flame size={22} strokeWidth={2} />
+          ) : sub === "base" ? (
             <Building2 size={22} strokeWidth={2} />
-          </div>
-          <div className="ck-base-banner-body">
-            <div className="ck-base-banner-eyebrow">Stand pronto pra receber</div>
-            <div className="ck-base-banner-title">
-              Base do estande
-              {baseDayLabel ? (
-                <>
-                  {" "}
-                  · <em>{baseDayLabel}</em>
-                </>
-              ) : null}
-            </div>
-            <p className="ck-base-banner-text">
-              Confira infraestrutura e ambientação — ao terminar, clique em{" "}
-              <strong>Validar base (estande)</strong> e deixe o stand impenetrável.
-            </p>
-          </div>
-          <div className="ck-base-banner-chip" aria-hidden>
-            <span>{done}</span>
-            <small>de {total}</small>
-          </div>
+          ) : sub === "premiacao" ? (
+            <Trophy size={22} strokeWidth={2} />
+          ) : (
+            <Target size={22} strokeWidth={2} />
+          )}
         </div>
-      )}
-
-      {/* INFO BANNER — DIÁRIO */}
-      {sub === "diario" && (
-        <div className="ck-diario-banner">
-          <div className="ck-diario-banner-sun" aria-hidden>
-            <Sun size={22} strokeWidth={2} />
+        <div className="ck-quest-banner-body">
+          <div className="ck-quest-banner-eyebrow">
+            <Zap size={11} strokeWidth={2.5} aria-hidden /> {quest.eyebrow}
           </div>
-          <div className="ck-diario-banner-body">
-            <div className="ck-diario-banner-eyebrow">Bom dia no stand</div>
-            <div className="ck-diario-banner-title">
-              Rotina de hoje
-              {diarioDayLabel ? (
-                <>
-                  {" "}
-                  · <em>{diarioDayLabel}</em>
-                </>
-              ) : null}
-            </div>
-            <p className="ck-diario-banner-text">
-              Marque cada cobrança conforme for concluindo — ao terminar, clique em{" "}
-              <strong>Validar diário</strong> e feche o dia com tudo registrado.
-            </p>
-          </div>
-          <div className="ck-diario-banner-chip" aria-hidden>
-            <span>{done}</span>
-            <small>de {total}</small>
-          </div>
-        </div>
-      )}
-
-      {sub === "premiacao" && (
-        <div className="info-banner">
-          <Info size={16} strokeWidth={2} />
-          <div>
-            Controle <strong>diário</strong>
-            {premDayLabel ? (
+          <div className="ck-quest-banner-title">
+            {quest.title}
+            {(sub === "diario" ? diarioDayLabel : sub === "base" ? baseDayLabel : premDayLabel) ? (
               <>
                 {" "}
-                — hoje, <strong>{premDayLabel}</strong>
+                ·{" "}
+                <em>
+                  {sub === "diario" ? diarioDayLabel : sub === "base" ? baseDayLabel : premDayLabel}
+                </em>
               </>
             ) : null}
-            . Marque os preparativos da cerimônia e clique em <strong>Validar premiação</strong>{" "}
-            para salvar no banco. Cada dia tem sua foto independente.
+          </div>
+          <p className="ck-quest-banner-text">
+            Fase atual: <strong>{quest.stage}</strong> — {quest.tip}
+          </p>
+          <div className="ck-quest-stages" aria-label="Estágios da missão">
+            {quest.stages.map((s) => {
+              const reached = quest.percent >= s.at;
+              const currentAt =
+                [...quest.stages].reverse().find((x) => quest.percent >= x.at)?.at ?? 0;
+              return (
+                <span
+                  key={s.id}
+                  className="ck-quest-stage"
+                  data-reached={reached}
+                  data-current={s.at === currentAt || undefined}
+                >
+                  <i aria-hidden />
+                  {s.short}
+                </span>
+              );
+            })}
           </div>
         </div>
-      )}
+        <div className="ck-quest-banner-hud" aria-hidden>
+          <div className="ck-quest-rank" data-rank={quest.rank}>
+            <small>Rank</small>
+            <strong>{quest.rank}</strong>
+          </div>
+          <div className="ck-quest-chip">
+            <span>{quest.xp}</span>
+            <small>XP</small>
+          </div>
+        </div>
+      </div>
 
       {sub === "base" && baseSaveError && (
         <div className="ck-error" role="alert">
@@ -629,82 +870,99 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           "ck-card",
           sub === "diario" ? "ck-card--diario" : "",
           sub === "base" ? "ck-card--base" : "",
+          sub === "premiacao" ? "ck-card--prem" : "",
         ]
           .filter(Boolean)
           .join(" ")}
-        data-complete={
-          (sub === "diario" || sub === "base") && total > 0 && done === total ? "true" : undefined
-        }
+        data-complete={total > 0 && done === total ? "true" : undefined}
+        data-stage={quest.stageId}
+        data-theme={questTheme}
         aria-labelledby="ck-title"
       >
         <div className="ck-head">
           <div className="ck-head-title">
             <span className="ck-head-ico" data-accent={meta.accent} aria-hidden>
               {sub === "base" && <Building2 size={22} strokeWidth={1.75} />}
-              {sub === "diario" && <Sun size={22} strokeWidth={1.75} />}
-              {sub === "premiacao" && <Award size={22} strokeWidth={1.75} />}
+              {sub === "diario" && <Flame size={22} strokeWidth={1.75} />}
+              {sub === "premiacao" && <Trophy size={22} strokeWidth={1.75} />}
             </span>
             <div>
               <div id="ck-title" className="ck-head-name">
-                {sub === "base" && "Checklist — Estande"}
-                {sub === "diario" && "Checklist — Rotina Diária"}
-                {sub === "premiacao" && "Checklist — Premiação"}
+                {quest.missionTitle}
               </div>
               <div className="ck-head-desc">
-                {sub === "diario"
-                  ? "Um passo de cada vez — cada check deixa o stand mais afiado."
-                  : sub === "base"
-                    ? "Cada item conferido fortalece a base — stand impecável vende mais."
-                    : meta.description}
+                Cada check vale {quest.xpPer} XP · fase {quest.stage}
               </div>
             </div>
           </div>
-          <div className="ck-head-count" aria-label="Itens conferidos">
-            <span className="n">{done}</span>
-            <span className="t">/ {total}</span>
-            <span className="l">conferidos</span>
+          <div
+            className="ck-quest-xp-badge"
+            data-theme={questTheme}
+            aria-label={`${quest.xp} de ${quest.xpMax} XP`}
+          >
+            <Zap size={14} strokeWidth={2.5} aria-hidden />
+            <span className="n">{quest.xp}</span>
+            <span className="t">/ {quest.xpMax} XP</span>
           </div>
         </div>
 
-        <div className="ck-progress">
-          <div className="ck-progress-bar" data-accent={meta.accent} aria-hidden>
-            <span style={{ width: `${percent}%` }} />
-          </div>
-          <div className="ck-progress-meta">
-            <span>
-              <strong>{percent}%</strong> concluído
+        <div className="ck-quest-xp" data-theme={questTheme}>
+          <div className="ck-quest-xp-top">
+            <span className="ck-quest-xp-label">
+              <Star size={13} strokeWidth={2.25} aria-hidden />
+              Barra de XP
             </span>
+            <span className="ck-quest-xp-pct">
+              <strong>{quest.percent}%</strong> {quest.runLabel}
+            </span>
+          </div>
+          <div className="ck-quest-xp-track" aria-hidden>
+            <span className="ck-quest-xp-fill" style={{ width: `${quest.percent}%` }} />
+            {quest.stages
+              .filter((s) => s.at > 0)
+              .map((s) => (
+                <i
+                  key={s.id}
+                  className="ck-quest-xp-mark"
+                  data-reached={quest.percent >= s.at}
+                  style={{ left: `${s.at}%` }}
+                />
+              ))}
+          </div>
+          <div className="ck-quest-xp-meta">
             <span>
-              {(sub === "diario" || sub === "base") && total > 0 && done === total ? (
+              {quest.percent >= 100 ? (
                 <>
-                  <Sparkles size={13} strokeWidth={2.25} aria-hidden />{" "}
-                  {sub === "base" ? "Base fechada!" : "Dia fechado!"}
+                  <Sparkles size={13} strokeWidth={2.25} aria-hidden /> Missão concluída!
                 </>
               ) : (
                 <>
-                  Faltam <strong>{total - done}</strong> itens
+                  Faltam <strong>{total - done}</strong> checks · +{(total - done) * quest.xpPer} XP
                 </>
               )}
+            </span>
+            <span className="ck-quest-combo" data-on={done > 0 && done < total}>
+              <Flame size={13} strokeWidth={2.25} aria-hidden />
+              {done > 0 && done < total
+                ? `Combo ×${done}`
+                : done === total && total > 0
+                  ? "Combo max"
+                  : "Sem combo"}
             </span>
           </div>
         </div>
 
-        {sub === "diario" && total > 0 && done === total && (
-          <div className="ck-diario-cheer" role="status">
-            <Sparkles size={18} strokeWidth={2} aria-hidden />
-            <div>
-              <strong>Rotina do dia concluída!</strong>
-              <span>Tudo em ordem — bom trabalho. Agora é só validar.</span>
+        {total > 0 && done === total && (
+          <div className="ck-quest-cheer" data-theme={questTheme} role="status">
+            <div className="ck-quest-cheer-burst" aria-hidden />
+            <div className="ck-quest-cheer-rank" data-rank="S" aria-hidden>
+              S
             </div>
-          </div>
-        )}
-
-        {sub === "base" && total > 0 && done === total && (
-          <div className="ck-base-cheer" role="status">
-            <Sparkles size={18} strokeWidth={2} aria-hidden />
             <div>
-              <strong>Base do estande conferida!</strong>
-              <span>Stand impenetrável — valide pra registrar o accountability.</span>
+              <strong>{quest.winTitle}</strong>
+              <span>
+                Rank S · {quest.xp} XP conquistados — {quest.winHint}.
+              </span>
             </div>
           </div>
         )}
@@ -735,7 +993,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         )}
 
         {sub === "base" && baseLoading ? (
-          <div className="ck-list ck-list--base" aria-busy="true" aria-live="polite">
+          <div
+            className="ck-list ck-list--base ck-list--quest ck-list--single"
+            aria-busy="true"
+            aria-live="polite"
+          >
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>
                 <span className="ck-checkbox skel-block" />
@@ -751,7 +1013,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         ) : sub === "base" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
         ) : sub === "diario" && diarioLoading ? (
-          <div className="ck-list ck-list--single" aria-busy="true" aria-live="polite">
+          <div
+            className="ck-list ck-list--diario ck-list--quest ck-list--single"
+            aria-busy="true"
+            aria-live="polite"
+          >
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>
                 <span className="ck-checkbox skel-block" />
@@ -767,7 +1033,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         ) : sub === "diario" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
         ) : sub === "premiacao" && premLoading ? (
-          <div className="ck-list" aria-busy="true" aria-live="polite">
+          <div
+            className="ck-list ck-list--prem ck-list--quest ck-list--single"
+            aria-busy="true"
+            aria-live="polite"
+          >
             {Array.from({ length: 7 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>
                 <span className="ck-checkbox skel-block" />
@@ -786,31 +1056,35 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           <div
             className={[
               "ck-list",
-              sub === "diario" ? "ck-list--diario ck-list--single" : "",
+              "ck-list--quest",
+              "ck-list--single",
+              sub === "diario" ? "ck-list--diario" : "",
               sub === "base" ? "ck-list--base" : "",
+              sub === "premiacao" ? "ck-list--prem" : "",
             ]
               .filter(Boolean)
               .join(" ")}
+            data-theme={questTheme}
           >
             {currentItems.map((item, index) => {
               const Icon = item.Icon;
               const checked = !!currentMap[item.id];
               const divergent = !!currentDivergent[item.id];
-              const lively = sub === "diario" || sub === "base";
+              const isNext =
+                !checked && currentItems.findIndex((it) => !currentMap[it.id]) === index;
               return (
                 <label
                   key={item.id}
                   className="ck-item"
                   data-done={checked}
                   data-accent={meta.accent}
-                  style={lively ? ({ ["--ck-i" as string]: index } as CSSProperties) : undefined}
+                  data-next={isNext || undefined}
+                  style={{ ["--ck-i" as string]: index } as CSSProperties}
                 >
                   <input type="checkbox" checked={checked} onChange={() => currentSet(item.id)} />
-                  {lively && (
-                    <span className="ck-item-step" aria-hidden>
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  )}
+                  <span className="ck-item-step" aria-hidden>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   <span className="ck-checkbox" aria-hidden>
                     <CheckCircle2 size={14} strokeWidth={2.5} />
                   </span>
@@ -828,9 +1102,14 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                       Divergente
                     </span>
                   )}
-                  {lively && checked && (
-                    <span className="ck-item-done-tag" aria-hidden>
-                      Feito
+                  {!checked && isNext && (
+                    <span className="ck-item-quest-tag" aria-hidden>
+                      Próximo
+                    </span>
+                  )}
+                  {checked && (
+                    <span className="ck-item-done-tag ck-item-done-tag--xp" aria-hidden>
+                      <Zap size={11} strokeWidth={2.5} /> +{quest.xpPer} XP
                     </span>
                   )}
                 </label>
