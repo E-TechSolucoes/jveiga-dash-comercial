@@ -53,7 +53,7 @@ export default function RootLayout({
           className="pointer-events-none fixed right-4 bottom-3 z-[9999] inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/90 px-3 py-1.5 text-xs font-medium tracking-wide text-slate-900 shadow-sm backdrop-blur select-none"
         >
           <span className="font-normal opacity-60">v</span>
-          <span className="font-semibold tabular-nums">1.0.10</span>
+          <span className="font-semibold tabular-nums">1.0.11</span>
         </footer>
       </body>
     </html>

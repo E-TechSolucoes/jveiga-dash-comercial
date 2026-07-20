@@ -31,7 +31,7 @@ export const TAB_ITEMS: TabItem[] = [
   { id: "resumo", label: "Resumo", href: "/dashboard", icon: LayoutDashboard, accent: "blue" },
   {
     id: "checklist",
-    label: "A Fazer",
+    label: "Checklist",
     href: "/dashboard/checklist",
     icon: CheckCircle2,
     accent: "emerald",

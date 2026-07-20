@@ -13,6 +13,7 @@ import {
   type PastasListFilters,
 } from "@/lib/dashboard/api";
 
+import { listBrokerScores } from "@/lib/broker-scores/api";
 import { listOnDutyBrokersEnriched } from "@/lib/on-duty-brokers/api";
 
 import { qk } from "./query-keys";
@@ -108,5 +109,18 @@ export function useConversaoHistorica(codigo: string, nome: string) {
     queryKey: qk.conversaoHistorica(codigo, nome),
     queryFn: ({ signal }) => getConversaoHistorica(codigo, nome, signal),
     enabled: nome.trim().length > 0,
+  });
+}
+
+/** Pontuações de plantão / ações / pastas / vendas (broker_scores) no período. */
+export function useBrokerScores(empreendimentoIds: number[], from: string, to: string) {
+  return useQuery({
+    queryKey: qk.brokerScores(empreendimentoIds.join(","), from, to),
+    queryFn: ({ signal }) =>
+      listBrokerScores(
+        { empreendimentoIds, dataInicial: from, dataFinal: to, status: "active" },
+        signal,
+      ),
+    enabled: empreendimentoIds.length > 0 && from.length > 0 && to.length > 0,
   });
 }

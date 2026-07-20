@@ -23,6 +23,8 @@ export const qk = {
 
   arsenalWeek: (weekStart: string, empreendimentoId: number) =>
     ["arsenal-week", weekStart, empreendimentoId] as const,
+  brokerScores: (ids: string, from: string, to: string) =>
+    ["broker-scores", ids, from, to] as const,
   fieldActions: () => ["field-actions"] as const,
   agencies: () => ["agencies"] as const,
   agencyFieldBrokers: (agencyId: string) => ["agency-field-brokers", agencyId] as const,

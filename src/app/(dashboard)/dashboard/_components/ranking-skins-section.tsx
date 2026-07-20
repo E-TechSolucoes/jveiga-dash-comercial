@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Lock, Sword, Trophy, Users, type LucideIcon } from "lucide-react";
+import { Trophy, Users } from "lucide-react";
 
 import { useArsenalWeek } from "@/hooks/use-arsenal";
+import { useBrokerScores } from "@/hooks/use-dashboard";
 import { weekStartFromSemana, type ArsenalBroker } from "@/lib/arsenal/api";
-import type { Nivel } from "./arsenal-data";
+import { aggregateBrokerScoresByBroker, type BrokerScoreAggregate } from "@/lib/broker-scores/api";
+import { nivelOf, type Nivel } from "./arsenal-data";
 
 const NIVEL_ACCENT: Record<Nivel, "blue" | "violet" | "emerald" | "amber"> = {
   Soldado: "blue",
@@ -14,52 +16,104 @@ const NIVEL_ACCENT: Record<Nivel, "blue" | "violet" | "emerald" | "amber"> = {
   Lenda: "amber",
 };
 
-type SkinCtx = {
-  brokers: ArsenalBroker[];
-  validations: number;
-};
-
-type SkinDef = {
+type RankRow = {
+  brokerId: string;
   nome: string;
-  desc: string;
-  ck: (ctx: SkinCtx) => boolean;
+  imobiliaria: string;
+  pts: number;
+  ind: number;
+  vis: number;
+  pas: number;
+  vendas: number;
+  nivel: Nivel;
+  plantaoQtd: number;
+  plantaoPontos: number;
+  treinoPontos: number;
+  acaoPontos: number;
 };
-
-const SKINS: SkinDef[] = [
-  { nome: "Arquiteto", desc: "18+ a fazer base", ck: () => false },
-  { nome: "Caçador de Leads", desc: "4 canais ativos", ck: () => false },
-  {
-    nome: "General",
-    desc: "Corretor com 100+ pts",
-    ck: ({ brokers }) => brokers.some((b) => b.pts >= 100),
-  },
-  { nome: "Mestre Conversão", desc: "Conversão > 5%", ck: () => false },
-  {
-    nome: "Estrategista",
-    desc: "3+ vendas",
-    ck: ({ brokers }) => brokers.reduce((s, b) => s + b.vendas, 0) >= 3,
-  },
-  {
-    nome: "Treinador Elite",
-    desc: "8+ validações",
-    ck: ({ validations }) => validations >= 8,
-  },
-  {
-    nome: "Captador",
-    desc: "3+ imobiliárias ativas",
-    ck: ({ brokers }) => {
-      const ativas = new Set(
-        brokers.filter((b) => b.is_active && b.imobiliaria).map((b) => b.imobiliaria as string),
-      );
-      return ativas.size >= 3;
-    },
-  },
-];
 
 type Props = {
   semana: number;
   empreendimentoIds: number[];
 };
+
+function addDaysIso(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y!, m! - 1, d!);
+  dt.setDate(dt.getDate() + days);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** Funil da semana (arsenal) — sem participações de ação. */
+function funnelPts(b: Pick<ArsenalBroker, "ind" | "vis" | "pas" | "pas_aprov" | "vendas">): number {
+  return b.ind * 3 + b.vis * 5 + b.pas * 10 + b.pas_aprov * 20 + b.vendas * 30;
+}
+
+function arsenalActionPts(participacoes: number): number {
+  return participacoes * 5 + (participacoes >= 3 ? 10 : 0);
+}
+
+function weekPts(b: ArsenalBroker, score: BrokerScoreAggregate | undefined): number {
+  if (!score) return b.pts;
+  const hasScoreActions = score.treinoQtd > 0 || score.acaoQtd > 0;
+  const actionPts = hasScoreActions
+    ? score.treinoPontos + score.acaoPontos
+    : arsenalActionPts(b.participacoes_na_semana);
+  return score.plantaoPontos + actionPts + funnelPts(b);
+}
+
+function mergeRanking(
+  arsenalBrokers: ArsenalBroker[],
+  scoreAggs: BrokerScoreAggregate[],
+): RankRow[] {
+  const byId = new Map<string, RankRow>();
+  const scoresById = new Map(scoreAggs.map((s) => [s.brokerId, s]));
+
+  for (const b of arsenalBrokers) {
+    const score = scoresById.get(b.broker_id);
+    const pts = weekPts(b, score);
+    byId.set(b.broker_id, {
+      brokerId: b.broker_id,
+      nome: b.nome,
+      imobiliaria: b.imobiliaria || "—",
+      pts,
+      ind: b.ind,
+      vis: b.vis,
+      pas: b.pas,
+      vendas: b.vendas,
+      nivel: nivelOf(pts),
+      plantaoQtd: score?.plantaoQtd ?? 0,
+      plantaoPontos: score?.plantaoPontos ?? 0,
+      treinoPontos: score?.treinoPontos ?? 0,
+      acaoPontos: score?.acaoPontos ?? 0,
+    });
+  }
+
+  for (const score of scoreAggs) {
+    if (byId.has(score.brokerId)) continue;
+    const pts = score.plantaoPontos + score.treinoPontos + score.acaoPontos;
+    byId.set(score.brokerId, {
+      brokerId: score.brokerId,
+      nome: score.nome,
+      imobiliaria: "—",
+      pts,
+      ind: 0,
+      vis: 0,
+      pas: score.pastasQtd + score.pastasAprovadasQtd,
+      vendas: score.vendasQtd,
+      nivel: nivelOf(pts),
+      plantaoQtd: score.plantaoQtd,
+      plantaoPontos: score.plantaoPontos,
+      treinoPontos: score.treinoPontos,
+      acaoPontos: score.acaoPontos,
+    });
+  }
+
+  return Array.from(byId.values()).sort((a, b) => b.pts - a.pts || a.nome.localeCompare(b.nome));
+}
 
 export function RankingSkinsSection({ semana, empreendimentoIds }: Props) {
   const [mounted, setMounted] = useState(false);
@@ -72,49 +126,53 @@ export function RankingSkinsSection({ semana, empreendimentoIds }: Props) {
     () => (mounted ? weekStartFromSemana(semana) : null),
     [mounted, semana],
   );
+  const weekEnd = useMemo(() => (weekStart ? addDaysIso(weekStart, 6) : null), [weekStart]);
 
-  // Backend single-id: usamos o primeiro empreendimento selecionado.
+  // Backend single-id para o arsenal; scores agregam todos os empreendimentos.
   const empreendimentoId = empreendimentoIds[0] ?? null;
 
   const weekQuery = useArsenalWeek(weekStart ?? "", empreendimentoId);
-  const loading = !mounted || weekQuery.isLoading;
+  const scoresQuery = useBrokerScores(empreendimentoIds, weekStart ?? "", weekEnd ?? "");
+
+  const loading = !mounted || weekQuery.isLoading || scoresQuery.isLoading;
   const error = weekQuery.isError
     ? weekQuery.error instanceof Error
       ? weekQuery.error.message
       : "Falha ao carregar arsenal."
-    : null;
+    : scoresQuery.isError
+      ? scoresQuery.error instanceof Error
+        ? scoresQuery.error.message
+        : "Falha ao carregar pontuações."
+      : null;
 
   const effectiveWeek = weekStart && empreendimentoId != null ? (weekQuery.data ?? null) : null;
-  const brokers = useMemo<ArsenalBroker[]>(() => effectiveWeek?.brokers ?? [], [effectiveWeek]);
-  const validations = effectiveWeek?.validations ?? 0;
+  const arsenalBrokers = useMemo<ArsenalBroker[]>(
+    () => effectiveWeek?.brokers ?? [],
+    [effectiveWeek],
+  );
   const weekLabel = effectiveWeek ? effectiveWeek.week_number : semana;
 
-  const ranked = useMemo(() => [...brokers].sort((a, b) => b.pts - a.pts), [brokers]);
-
-  const skinCtx: SkinCtx = { brokers, validations };
-  const unlockedFlags = SKINS.map((s) => s.ck(skinCtx));
-  const skinsUnlocked = unlockedFlags.filter(Boolean).length;
-  const skinsPct = Math.round((skinsUnlocked / SKINS.length) * 100);
-
-  return (
-    <>
-      <RankingCard loading={loading} error={error} weekLabel={weekLabel} ranked={ranked} />
-      <SkinsCard
-        unlocked={skinsUnlocked}
-        total={SKINS.length}
-        pct={skinsPct}
-        skins={SKINS}
-        unlockedFlags={unlockedFlags}
-      />
-    </>
+  const scoreAggs = useMemo(
+    () =>
+      aggregateBrokerScoresByBroker(scoresQuery.data ?? [], {
+        period: "week",
+      }),
+    [scoresQuery.data],
   );
+
+  const ranked = useMemo(
+    () => mergeRanking(arsenalBrokers, scoreAggs),
+    [arsenalBrokers, scoreAggs],
+  );
+
+  return <RankingCard loading={loading} error={error} weekLabel={weekLabel} ranked={ranked} />;
 }
 
 type RankingCardProps = {
   loading: boolean;
   error: string | null;
   weekLabel: number;
-  ranked: ArsenalBroker[];
+  ranked: RankRow[];
 };
 
 function RankingCard({ loading, error, weekLabel, ranked }: RankingCardProps) {
@@ -123,11 +181,11 @@ function RankingCard({ loading, error, weekLabel, ranked }: RankingCardProps) {
       <header className="data-card-head">
         <div>
           <h2 className="data-card-title">
-            <Trophy size={18} strokeWidth={2} /> Ranking — Semana {weekLabel}
+            <Trophy size={18} strokeWidth={2} /> Ranking dos Corretores — Semana {weekLabel}
           </h2>
           <p className="data-card-sub">
-            Pontuação consolidada do arsenal: presença, treinos, indicações, visitas, pastas e
-            vendas.
+            Plantão (recepção) + treinos/ações da semana + funil (indicações, visitas, pastas e
+            vendas).
           </p>
         </div>
         <span className="data-card-meta">
@@ -143,7 +201,7 @@ function RankingCard({ loading, error, weekLabel, ranked }: RankingCardProps) {
               <th>#</th>
               <th>Corretor</th>
               <th>Imob.</th>
-              <th title="Pontos">Pts</th>
+              <th title="Pontos totais da semana">Pts</th>
               <th title="Indicações">Ind</th>
               <th title="Visitas">Vis</th>
               <th title="Pastas">Pas</th>
@@ -163,15 +221,20 @@ function RankingCard({ loading, error, weekLabel, ranked }: RankingCardProps) {
             ) : ranked.length === 0 ? (
               <tr>
                 <td colSpan={9} className="data-table-empty">
-                  Cadastre corretores em Armas para ver o ranking.
+                  Sem corretores com plantão, ações ou cadastro na semana. Marque plantão na
+                  recepção ou valide ações no arsenal.
                 </td>
               </tr>
             ) : (
               ranked.map((b, i) => (
-                <tr key={b.broker_id}>
+                <tr key={b.brokerId}>
                   <td>
-                    <span className="rk-pos" data-top={i < 3 ? "true" : "false"}>
-                      #{i + 1}
+                    <span
+                      className="rk-pos"
+                      data-top={i < 3 ? "true" : "false"}
+                      data-gold={i === 0 ? "true" : "false"}
+                    >
+                      {i + 1}
                     </span>
                   </td>
                   <td className="cell-strong">
@@ -179,16 +242,31 @@ function RankingCard({ loading, error, weekLabel, ranked }: RankingCardProps) {
                   </td>
                   <td>
                     <span className="chip-soft" data-accent="blue">
-                      {b.imobiliaria || "—"}
+                      {b.imobiliaria}
                     </span>
                   </td>
-                  <td className="cell-num cell-strong corr-pts">{b.pts}</td>
+                  <td
+                    className="cell-num cell-strong corr-pts"
+                    title={
+                      [
+                        b.plantaoPontos > 0
+                          ? `Plantão ${b.plantaoQtd.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} → ${b.plantaoPontos} pts`
+                          : null,
+                        b.treinoPontos > 0 ? `Treinos ${b.treinoPontos} pts` : null,
+                        b.acaoPontos > 0 ? `Ações ${b.acaoPontos} pts` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Pontuação da semana"
+                    }
+                  >
+                    {b.pts}
+                  </td>
                   <td className="cell-num">{b.ind}</td>
                   <td className="cell-num">{b.vis}</td>
                   <td className="cell-num">{b.pas}</td>
                   <td className="cell-num cell-strong">{b.vendas}</td>
                   <td>
-                    <span className="nivel-badge" data-accent={NIVEL_ACCENT[b.nivel as Nivel]}>
+                    <span className="nivel-badge" data-accent={NIVEL_ACCENT[b.nivel]}>
                       {b.nivel}
                     </span>
                   </td>
@@ -213,56 +291,5 @@ function RankingSkeleton() {
         </tr>
       ))}
     </>
-  );
-}
-
-type SkinsCardProps = {
-  unlocked: number;
-  total: number;
-  pct: number;
-  skins: SkinDef[];
-  unlockedFlags: boolean[];
-};
-
-function SkinsCard({ unlocked, total, pct, skins, unlockedFlags }: SkinsCardProps) {
-  return (
-    <section className="data-card" data-accent="violet">
-      <header className="data-card-head">
-        <div>
-          <h2 className="data-card-title">
-            <Sword size={18} strokeWidth={2} /> Skins do Comercial
-          </h2>
-          <p className="data-card-sub">
-            Conquistas desbloqueadas pela performance da operação. Cada skin libera ao bater seu
-            critério.
-          </p>
-        </div>
-        <span className="data-card-meta">
-          {unlocked} / {total} desbloqueada{unlocked === 1 ? "" : "s"}
-        </span>
-      </header>
-
-      <div className="sk-prog" aria-hidden>
-        <div className="sk-prog-fill" style={{ width: `${pct}%` }} />
-      </div>
-
-      <ul className="skins-grid">
-        {skins.map((s, i) => {
-          const u = unlockedFlags[i];
-          const Ico: LucideIcon = u ? Sword : Lock;
-          return (
-            <li key={s.nome} className="sk-mini" data-state={u ? "unlocked" : "locked"}>
-              <span className="sk-mini-icon" aria-hidden>
-                <Ico size={16} strokeWidth={2} />
-              </span>
-              <div className="sk-mini-text">
-                <div className="sk-mini-name">{s.nome}</div>
-                <div className="sk-mini-desc">{s.desc}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }

@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import {
   AlertCircle,
   Award,
-  BadgeCheck,
   Building2,
   Calendar,
   CheckCheck,
@@ -17,6 +16,7 @@ import {
   Lock,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trophy,
   type LucideIcon,
 } from "lucide-react";
@@ -74,8 +74,8 @@ const SUB_TABS: {
   Icon: LucideIcon;
   variant: "emerald" | "blue" | "amber";
 }[] = [
-  { id: "base", label: "Base do Estande", Icon: Building2, variant: "emerald" },
   { id: "diario", label: "Rotina Diária", Icon: Calendar, variant: "blue" },
+  { id: "base", label: "Base do Estande", Icon: Building2, variant: "emerald" },
   { id: "premiacao", label: "Premiação Semanal", Icon: Trophy, variant: "amber" },
 ];
 
@@ -120,7 +120,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
   // escreve uma linha por estande via fan-out no service.
   const empreendimentoId = empreendimentoIds[0] ?? null;
 
-  const [sub, setSub] = useState<ChecklistType>("base");
+  const [sub, setSub] = useState<ChecklistType>("diario");
   const [log, setLog] = useState<ValidationLogEntry[]>([]);
   const [toast, setToast] = useState<{
     kind: ToastKind;
@@ -502,18 +502,29 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
       {/* INFO BANNER — DIÁRIO */}
       {sub === "diario" && (
-        <div className="info-banner">
-          <Info size={16} strokeWidth={2} />
-          <div>
-            Controle <strong>diário</strong>
-            {diarioDayLabel ? (
-              <>
-                {" "}
-                — hoje, <strong>{diarioDayLabel}</strong>
-              </>
-            ) : null}
-            . Marque as cobranças concluídas e clique em <strong>Validar diário</strong> para salvar
-            no banco. Cada dia tem sua foto independente.
+        <div className="ck-diario-banner">
+          <div className="ck-diario-banner-sun" aria-hidden>
+            <Sun size={22} strokeWidth={2} />
+          </div>
+          <div className="ck-diario-banner-body">
+            <div className="ck-diario-banner-eyebrow">Bom dia no stand</div>
+            <div className="ck-diario-banner-title">
+              Rotina de hoje
+              {diarioDayLabel ? (
+                <>
+                  {" "}
+                  · <em>{diarioDayLabel}</em>
+                </>
+              ) : null}
+            </div>
+            <p className="ck-diario-banner-text">
+              Marque cada cobrança conforme for concluindo — ao terminar, clique em{" "}
+              <strong>Validar diário</strong> e feche o dia com tudo registrado.
+            </p>
+          </div>
+          <div className="ck-diario-banner-chip" aria-hidden>
+            <span>{done}</span>
+            <small>de {total}</small>
           </div>
         </div>
       )}
@@ -603,12 +614,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
       )}
 
       {/* CHECKLIST CARD */}
-      <section className="ck-card" aria-labelledby="ck-title">
+      <section
+        className={`ck-card${sub === "diario" ? "ck-card--diario" : ""}`}
+        data-complete={sub === "diario" && total > 0 && done === total ? "true" : undefined}
+        aria-labelledby="ck-title"
+      >
         <div className="ck-head">
           <div className="ck-head-title">
             <span className="ck-head-ico" data-accent={meta.accent} aria-hidden>
               {sub === "base" && <ClipboardCheck size={22} strokeWidth={1.75} />}
-              {sub === "diario" && <BadgeCheck size={22} strokeWidth={1.75} />}
+              {sub === "diario" && <Sun size={22} strokeWidth={1.75} />}
               {sub === "premiacao" && <Award size={22} strokeWidth={1.75} />}
             </span>
             <div>
@@ -617,7 +632,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                 {sub === "diario" && "Checklist — Rotina Diária"}
                 {sub === "premiacao" && "Checklist — Premiação"}
               </div>
-              <div className="ck-head-desc">{meta.description}</div>
+              <div className="ck-head-desc">
+                {sub === "diario"
+                  ? "Um passo de cada vez — cada check deixa o stand mais afiado."
+                  : meta.description}
+              </div>
             </div>
           </div>
           <div className="ck-head-count" aria-label="Itens conferidos">
@@ -636,10 +655,28 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
               <strong>{percent}%</strong> concluído
             </span>
             <span>
-              Faltam <strong>{total - done}</strong> itens
+              {sub === "diario" && total > 0 && done === total ? (
+                <>
+                  <Sparkles size={13} strokeWidth={2.25} aria-hidden /> Dia fechado!
+                </>
+              ) : (
+                <>
+                  Faltam <strong>{total - done}</strong> itens
+                </>
+              )}
             </span>
           </div>
         </div>
+
+        {sub === "diario" && total > 0 && done === total && (
+          <div className="ck-diario-cheer" role="status">
+            <Sparkles size={18} strokeWidth={2} aria-hidden />
+            <div>
+              <strong>Rotina do dia concluída!</strong>
+              <span>Tudo em ordem — bom trabalho. Agora é só validar.</span>
+            </div>
+          </div>
+        )}
 
         {/* SKIN UNLOCK — só na Base */}
         {sub === "base" && (
@@ -715,8 +752,8 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         ) : sub === "premiacao" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
         ) : (
-          <div className={`ck-list${sub === "diario" ? "ck-list--single" : ""}`}>
-            {currentItems.map((item) => {
+          <div className={`ck-list${sub === "diario" ? "ck-list--diario ck-list--single" : ""}`}>
+            {currentItems.map((item, index) => {
               const Icon = item.Icon;
               const checked = !!currentMap[item.id];
               const divergent = !!currentDivergent[item.id];
@@ -726,8 +763,18 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                   className="ck-item"
                   data-done={checked}
                   data-accent={meta.accent}
+                  style={
+                    sub === "diario"
+                      ? ({ ["--ck-i" as string]: index } as CSSProperties)
+                      : undefined
+                  }
                 >
                   <input type="checkbox" checked={checked} onChange={() => currentSet(item.id)} />
+                  {sub === "diario" && (
+                    <span className="ck-item-step" aria-hidden>
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                  )}
                   <span className="ck-checkbox" aria-hidden>
                     <CheckCircle2 size={14} strokeWidth={2.5} />
                   </span>
@@ -743,6 +790,11 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                     >
                       <AlertCircle size={12} strokeWidth={2.25} />
                       Divergente
+                    </span>
+                  )}
+                  {sub === "diario" && checked && (
+                    <span className="ck-item-done-tag" aria-hidden>
+                      Feito
                     </span>
                   )}
                 </label>
