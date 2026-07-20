@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   BookOpen,
   Building2,
   CheckCircle2,
@@ -50,6 +51,13 @@ export const TAB_ITEMS: TabItem[] = [
     href: "/dashboard/gestao-acoes",
     icon: Target,
     accent: "blue",
+  },
+  {
+    id: "acompanhamento",
+    label: "Acompanhamento",
+    href: "/dashboard/acompanhamento",
+    icon: Activity,
+    accent: "rose",
   },
   { id: "imob", label: "Imobiliárias", href: "/dashboard/imob", icon: Building2, accent: "teal" },
   {

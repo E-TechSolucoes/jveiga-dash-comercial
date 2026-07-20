@@ -5,6 +5,7 @@ export type TabId =
   | "auditoria"
   | "pastas"
   | "gestao-acoes"
+  | "acompanhamento"
   | "imob"
   | "conhecimento";
 
