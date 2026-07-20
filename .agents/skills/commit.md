@@ -4,6 +4,8 @@ Você é um agente especialista em engenharia de software, qualidade de código 
 
 Seu objetivo é analisar as alterações atuais do repositório, corrigir formatação quando necessário, validar a qualidade do código e gerar um commit técnico em português brasileiro, seguindo um estilo semelhante ao OpenCommit.
 
+Doc humana de referência: `docs/commit-e-release.md` (workspace: `docs/commit-e-release-frontend.md`).
+
 ## Fluxo obrigatório
 
 Execute as etapas abaixo, nesta ordem:
@@ -41,7 +43,7 @@ Execute as etapas abaixo, nesta ordem:
      ```bash
      <package-manager> run lint
      ```
-   - Se houver erros simples e seguros de corrigir, corrigir.
+   - Se houver erros simples e seguros de corrigir, corrigir (`lint:fix` quando existir).
    - Após corrigir, rodar o lint novamente.
    - Não fazer alterações grandes de arquitetura apenas para passar no lint sem explicar.
 
@@ -59,8 +61,20 @@ Execute as etapas abaixo, nesta ordem:
      python -m compileall .
      ```
    - Se não existir comando claro de build, informar no resumo final.
+   - **Não commit/push** se format, lint ou build falharem.
 
-5. Revisar alterações finais
+5. Subir versão (quando for release)
+   - Se o usuário pediu release / bump / subir versão, ou o conjunto de mudanças justifica release:
+     - Atualizar `"version"` em `package.json` (SemVer: patch/minor/major).
+     - Sincronizar `package-lock.json` (`npm install` ou equivalente).
+     - Incluir ambos no commit.
+   - Exemplos de mensagem:
+     ```txt
+     chore(release): sobe versão para 1.0.12
+     feat(modulo): descreve a mudança e bumpa para v1.0.12
+     ```
+
+6. Revisar alterações finais
    - Rodar novamente:
      ```bash
      git status
@@ -70,17 +84,17 @@ Execute as etapas abaixo, nesta ordem:
    - Garantir que as alterações feitas pelo Prettier ou correções de lint estão coerentes.
    - Não incluir arquivos sensíveis, `.env`, secrets, dumps, builds gerados ou arquivos temporários no commit.
 
-6. Gerar mensagem de commit
+7. Gerar mensagem de commit
    - A mensagem deve estar em português brasileiro.
    - Usar linguagem técnica, objetiva e clara.
-   - Seguir estilo Conventional Commits.
+   - Seguir estilo Conventional Commits (OpenCommit).
    - Escolher corretamente o tipo:
      - `feat`: nova funcionalidade
      - `fix`: correção de bug
      - `refactor`: refatoração sem mudança funcional
      - `perf`: melhoria de performance
      - `style`: formatação/estilo sem mudança lógica
-     - `chore`: manutenção, configs, dependências
+     - `chore`: manutenção, configs, dependências, release
      - `docs`: documentação
      - `test`: testes
      - `build`: build, bundler, empacotamento
@@ -98,19 +112,29 @@ Execute as etapas abaixo, nesta ordem:
      melhorias
      ```
 
-7. Criar o commit
+8. Criar o commit
    - Adicionar somente os arquivos relevantes:
      ```bash
      git add <arquivos>
      ```
-   - Criar o commit com a mensagem gerada:
+   - Criar o commit com a mensagem gerada (HEREDOC preferível):
+
      ```bash
-     git commit -m "<tipo>(<escopo>): <descrição técnica>"
+     git commit -m "$(cat <<'EOF'
+     <tipo>(<escopo>): <descrição técnica>
+
+     EOF
+     )"
      ```
-   - Se necessário, usar corpo de commit:
-     ```bash
-     git commit -m "<tipo>(<escopo>): <descrição técnica>" -m "<detalhes técnicos adicionais>"
-     ```
+
+9. Push (somente se o usuário pediu)
+
+   ```bash
+   git push -u origin HEAD
+   ```
+
+   - Não usar `--force` em `main`/`master`.
+   - Não pular hooks (`--no-verify`) sem pedido explícito.
 
 ## Regras para a mensagem de commit
 
@@ -118,4 +142,12 @@ A mensagem deve ter este padrão:
 
 ```txt
 <tipo>(<escopo>): <descrição curta no imperativo ou presente>
+```
+
+Exemplos bons:
+
+```txt
+feat(resumo): consolida PPC e ranking com plantão no checklist
+fix(auth): corrige refresh de sessão após expiração do JWT
+chore(release): sobe versão para 1.0.12
 ```

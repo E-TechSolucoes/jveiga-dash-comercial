@@ -9,7 +9,6 @@ import {
   Calendar,
   CheckCheck,
   CheckCircle2,
-  ClipboardCheck,
   Clock,
   History,
   Info,
@@ -484,18 +483,29 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
       {/* INFO BANNER — BASE (Estande) */}
       {sub === "base" && (
-        <div className="info-banner">
-          <Info size={16} strokeWidth={2} />
-          <div>
-            Controle <strong>diário</strong>
-            {baseDayLabel ? (
-              <>
-                {" "}
-                — hoje, <strong>{baseDayLabel}</strong>
-              </>
-            ) : null}
-            . Marque os itens conferidos e clique em <strong>Validar base (estande)</strong> para
-            salvar no banco. Cada dia tem sua foto independente.
+        <div className="ck-base-banner">
+          <div className="ck-base-banner-ico" aria-hidden>
+            <Building2 size={22} strokeWidth={2} />
+          </div>
+          <div className="ck-base-banner-body">
+            <div className="ck-base-banner-eyebrow">Stand pronto pra receber</div>
+            <div className="ck-base-banner-title">
+              Base do estande
+              {baseDayLabel ? (
+                <>
+                  {" "}
+                  · <em>{baseDayLabel}</em>
+                </>
+              ) : null}
+            </div>
+            <p className="ck-base-banner-text">
+              Confira infraestrutura e ambientação — ao terminar, clique em{" "}
+              <strong>Validar base (estande)</strong> e deixe o stand impenetrável.
+            </p>
+          </div>
+          <div className="ck-base-banner-chip" aria-hidden>
+            <span>{done}</span>
+            <small>de {total}</small>
           </div>
         </div>
       )}
@@ -615,14 +625,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
       {/* CHECKLIST CARD */}
       <section
-        className={`ck-card${sub === "diario" ? "ck-card--diario" : ""}`}
-        data-complete={sub === "diario" && total > 0 && done === total ? "true" : undefined}
+        className={`ck-card${sub === "diario" ? "ck-card--diario" : ""}${sub === "base" ? "ck-card--base" : ""}`}
+        data-complete={
+          (sub === "diario" || sub === "base") && total > 0 && done === total ? "true" : undefined
+        }
         aria-labelledby="ck-title"
       >
         <div className="ck-head">
           <div className="ck-head-title">
             <span className="ck-head-ico" data-accent={meta.accent} aria-hidden>
-              {sub === "base" && <ClipboardCheck size={22} strokeWidth={1.75} />}
+              {sub === "base" && <Building2 size={22} strokeWidth={1.75} />}
               {sub === "diario" && <Sun size={22} strokeWidth={1.75} />}
               {sub === "premiacao" && <Award size={22} strokeWidth={1.75} />}
             </span>
@@ -635,7 +647,9 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
               <div className="ck-head-desc">
                 {sub === "diario"
                   ? "Um passo de cada vez — cada check deixa o stand mais afiado."
-                  : meta.description}
+                  : sub === "base"
+                    ? "Cada item conferido fortalece a base — stand impecável vende mais."
+                    : meta.description}
               </div>
             </div>
           </div>
@@ -655,9 +669,10 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
               <strong>{percent}%</strong> concluído
             </span>
             <span>
-              {sub === "diario" && total > 0 && done === total ? (
+              {(sub === "diario" || sub === "base") && total > 0 && done === total ? (
                 <>
-                  <Sparkles size={13} strokeWidth={2.25} aria-hidden /> Dia fechado!
+                  <Sparkles size={13} strokeWidth={2.25} aria-hidden />{" "}
+                  {sub === "base" ? "Base fechada!" : "Dia fechado!"}
                 </>
               ) : (
                 <>
@@ -674,6 +689,16 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
             <div>
               <strong>Rotina do dia concluída!</strong>
               <span>Tudo em ordem — bom trabalho. Agora é só validar.</span>
+            </div>
+          </div>
+        )}
+
+        {sub === "base" && total > 0 && done === total && (
+          <div className="ck-base-cheer" role="status">
+            <Sparkles size={18} strokeWidth={2} aria-hidden />
+            <div>
+              <strong>Base do estande conferida!</strong>
+              <span>Stand impenetrável — valide pra registrar o accountability.</span>
             </div>
           </div>
         )}
@@ -704,7 +729,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         )}
 
         {sub === "base" && baseLoading ? (
-          <div className="ck-list" aria-busy="true" aria-live="polite">
+          <div className="ck-list ck-list--base" aria-busy="true" aria-live="polite">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="ck-item ck-item--skel" aria-hidden>
                 <span className="ck-checkbox skel-block" />
@@ -752,25 +777,24 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
         ) : sub === "premiacao" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
         ) : (
-          <div className={`ck-list${sub === "diario" ? "ck-list--diario ck-list--single" : ""}`}>
+          <div
+            className={`ck-list${sub === "diario" ? "ck-list--diario ck-list--single" : ""}${sub === "base" ? "ck-list--base" : ""}`}
+          >
             {currentItems.map((item, index) => {
               const Icon = item.Icon;
               const checked = !!currentMap[item.id];
               const divergent = !!currentDivergent[item.id];
+              const lively = sub === "diario" || sub === "base";
               return (
                 <label
                   key={item.id}
                   className="ck-item"
                   data-done={checked}
                   data-accent={meta.accent}
-                  style={
-                    sub === "diario"
-                      ? ({ ["--ck-i" as string]: index } as CSSProperties)
-                      : undefined
-                  }
+                  style={lively ? ({ ["--ck-i" as string]: index } as CSSProperties) : undefined}
                 >
                   <input type="checkbox" checked={checked} onChange={() => currentSet(item.id)} />
-                  {sub === "diario" && (
+                  {lively && (
                     <span className="ck-item-step" aria-hidden>
                       {String(index + 1).padStart(2, "0")}
                     </span>
@@ -792,7 +816,7 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
                       Divergente
                     </span>
                   )}
-                  {sub === "diario" && checked && (
+                  {lively && checked && (
                     <span className="ck-item-done-tag" aria-hidden>
                       Feito
                     </span>

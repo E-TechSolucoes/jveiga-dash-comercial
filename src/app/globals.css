@@ -3136,6 +3136,348 @@ body {
   }
 }
 
+/* ============= BASE DO ESTANDE — Fortaleza Verde ============= */
+@keyframes ck-base-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ck-base-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  55% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes ck-base-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 18px -10px rgba(5, 150, 105, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 10px 22px -8px rgba(16, 185, 129, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+}
+
+.ck-base-banner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid #a7f3d0;
+  background:
+    radial-gradient(420px 180px at 100% -20%, rgba(52, 211, 153, 0.28), transparent 55%),
+    radial-gradient(380px 160px at 0% 120%, rgba(16, 185, 129, 0.18), transparent 60%),
+    linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 48%, #fffbeb 100%);
+  box-shadow: 0 10px 28px -18px rgba(5, 150, 105, 0.35);
+  animation: ck-base-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ck-base-banner-ico {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #047857;
+  background: linear-gradient(145deg, #a7f3d0, #34d399);
+  animation: ck-base-pulse 3.2s ease-in-out infinite;
+}
+.ck-base-banner-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #047857;
+  margin-bottom: 4px;
+}
+.ck-base-banner-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.ck-base-banner-title em {
+  font-family: var(--font-fraunces), "Fraunces", Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  color: #059669;
+}
+.ck-base-banner-text {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  max-width: 52ch;
+}
+.ck-base-banner-text strong {
+  color: #047857;
+}
+.ck-base-banner-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(167, 243, 208, 0.95);
+  box-shadow: var(--shadow-xs);
+  font-variant-numeric: tabular-nums;
+}
+.ck-base-banner-chip span {
+  font-size: 26px;
+  font-weight: 800;
+  color: #047857;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.ck-base-banner-chip small {
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.ck-card--base {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 22px;
+  background:
+    radial-gradient(520px 220px at 110% -30%, rgba(16, 185, 129, 0.14), transparent 55%),
+    radial-gradient(420px 180px at -10% 110%, rgba(251, 191, 36, 0.1), transparent 50%), #ffffff;
+  box-shadow:
+    0 14px 36px -22px rgba(5, 150, 105, 0.35),
+    var(--shadow-sm);
+}
+.ck-card--base::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(90deg, #34d399, #10b981 45%, #fbbf24);
+  pointer-events: none;
+}
+.ck-card--base[data-complete="true"] {
+  border-color: #6ee7b7;
+  background:
+    radial-gradient(480px 200px at 100% -20%, rgba(16, 185, 129, 0.18), transparent 55%),
+    radial-gradient(380px 160px at 0% 120%, rgba(251, 191, 36, 0.12), transparent 55%), #ffffff;
+}
+.ck-card--base[data-complete="true"]::before {
+  background: linear-gradient(90deg, #34d399, #059669 50%, #fbbf24);
+}
+.ck-card--base .ck-head-ico[data-accent="emerald"] {
+  background: linear-gradient(145deg, #d1fae5, #a7f3d0);
+  color: #047857;
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);
+}
+.ck-card--base .ck-head-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.ck-card--base .ck-head-count {
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border: 1px solid #a7f3d0;
+}
+.ck-card--base .ck-head-count .n {
+  color: #047857;
+  font-size: 24px;
+}
+.ck-card--base .ck-progress-bar {
+  height: 12px;
+  border-radius: 999px;
+  background: #d1fae5;
+  overflow: hidden;
+}
+.ck-card--base .ck-progress-bar > span {
+  background: linear-gradient(90deg, #34d399, #059669 55%, #f59e0b);
+  box-shadow: 0 0 12px rgba(5, 150, 105, 0.35);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ck-card--base[data-complete="true"] .ck-progress-bar > span {
+  background: linear-gradient(90deg, #34d399, #047857 60%, #fbbf24);
+}
+.ck-card--base .ck-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.ck-card--base .ck-progress-meta span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #047857;
+  font-weight: 600;
+}
+
+.ck-base-cheer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 14px 0 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #a7f3d0;
+  background: linear-gradient(135deg, #ecfdf5, #fffbeb);
+  color: #047857;
+  animation: ck-base-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ck-base-cheer svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #b45309;
+}
+.ck-base-cheer strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #065f46;
+}
+.ck-base-cheer span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: #047857;
+  opacity: 0.9;
+}
+
+.ck-list--base {
+  gap: 10px;
+  margin-top: 6px;
+}
+.ck-list--base .ck-item {
+  gap: 14px;
+  padding: 16px 16px 16px 14px;
+  border-radius: 16px;
+  border: 1.5px solid #bbf7d0;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  animation: ck-base-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--ck-i, 0) * 45ms);
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.ck-list--base .ck-item:hover {
+  border-color: #6ee7b7;
+  background: #f0fdf4;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px -16px rgba(5, 150, 105, 0.45);
+}
+.ck-list--base .ck-item-step {
+  min-width: 28px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #6ee7b7;
+  font-variant-numeric: tabular-nums;
+}
+.ck-list--base .ck-checkbox {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  border: 2px solid #6ee7b7;
+  background: #ecfdf5;
+}
+.ck-list--base .ck-item-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ecfdf5, #d1fae5);
+  color: #047857;
+}
+.ck-list--base .ck-item-label {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex: 1;
+  text-decoration: none;
+}
+.ck-list--base .ck-item-done-tag {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #047857;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.ck-list--base .ck-item[data-done="true"] {
+  border-color: #6ee7b7;
+  background: linear-gradient(135deg, #ecfdf5, #ffffff 60%);
+}
+.ck-list--base .ck-item[data-done="true"] .ck-checkbox {
+  background: #10b981;
+  border-color: #059669;
+  color: #fff;
+  animation: ck-base-pop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ck-list--base .ck-item[data-done="true"] .ck-item-ico {
+  background: #d1fae5;
+  color: #047857;
+}
+.ck-list--base .ck-item[data-done="true"] .ck-item-step {
+  color: #34d399;
+}
+.ck-list--base .ck-item[data-done="true"] .ck-item-label {
+  color: #065f46;
+  text-decoration: none;
+}
+
+@media (max-width: 720px) {
+  .ck-base-banner {
+    grid-template-columns: auto 1fr;
+  }
+  .ck-base-banner-chip {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    gap: 8px;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  .ck-base-banner-chip span {
+    font-size: 20px;
+  }
+  .ck-list--base .ck-item-done-tag {
+    display: none;
+  }
+}
+
 /* ============= CHECKLIST SKELETON / EMPTY / ERROR ============= */
 .ck-item--skel {
   cursor: default;
