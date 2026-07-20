@@ -625,7 +625,13 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
 
       {/* CHECKLIST CARD */}
       <section
-        className={`ck-card${sub === "diario" ? "ck-card--diario" : ""}${sub === "base" ? "ck-card--base" : ""}`}
+        className={[
+          "ck-card",
+          sub === "diario" ? "ck-card--diario" : "",
+          sub === "base" ? "ck-card--base" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         data-complete={
           (sub === "diario" || sub === "base") && total > 0 && done === total ? "true" : undefined
         }
@@ -778,7 +784,13 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
         ) : (
           <div
-            className={`ck-list${sub === "diario" ? "ck-list--diario ck-list--single" : ""}${sub === "base" ? "ck-list--base" : ""}`}
+            className={[
+              "ck-list",
+              sub === "diario" ? "ck-list--diario ck-list--single" : "",
+              sub === "base" ? "ck-list--base" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             {currentItems.map((item, index) => {
               const Icon = item.Icon;
