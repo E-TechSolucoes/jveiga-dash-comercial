@@ -1264,6 +1264,49 @@ body {
   }
 }
 
+.resumo-ppc-hero--sk {
+  pointer-events: none;
+}
+.resumo-ppc-hero--sk::before {
+  opacity: 0.35;
+}
+.resumo-sk-hero-lbl {
+  display: block;
+  width: 200px;
+  height: 11px;
+  margin-bottom: 10px;
+}
+.resumo-sk-hero-val {
+  display: block;
+  width: 100px;
+  height: 40px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
+.resumo-sk-hero-sub {
+  display: block;
+  width: min(280px, 55vw);
+  height: 12px;
+}
+.resumo-ppc-hero-tile--sk {
+  min-width: 88px;
+  background: #f1f5f9 !important;
+  border: 2px solid #cbd5e1 !important;
+}
+.resumo-sk-tile-lbl {
+  display: block;
+  width: 48px;
+  height: 10px;
+  margin: 0 auto 8px;
+}
+.resumo-sk-tile-val {
+  display: block;
+  width: 56px;
+  height: 22px;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
 .cascade {
   background: #fff;
   border: 1px solid var(--line);

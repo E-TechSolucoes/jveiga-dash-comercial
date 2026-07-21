@@ -16,6 +16,10 @@ type Props = {
   taxas: Taxas;
   real: FunnelNumbers;
   empreendimentoIds: number[];
+  funnelLoading: boolean;
+  pastasLoading: boolean;
+  salesPlanLoading: boolean;
+  taxasLoading: boolean;
 };
 
 function calcPPC(real: number, meta: number): number | null {
@@ -66,18 +70,34 @@ function avgFunilPpc(real: FunnelNumbers, meta: number, taxas: Taxas): number | 
   return Math.round(stages.reduce((a, b) => a + b, 0) / stages.length);
 }
 
-export function PpcConsolidadoHero({ meta, taxas, real, empreendimentoIds }: Props) {
+export function PpcConsolidadoHero({
+  meta,
+  taxas,
+  real,
+  empreendimentoIds,
+  funnelLoading,
+  pastasLoading,
+  salesPlanLoading,
+  taxasLoading,
+}: Props) {
   const weeklyActionsVersion = useResourceVersion("weekly-actions");
   const [acoesPPC, setAcoesPPC] = useState<number | null>(null);
+  const [acoesLoading, setAcoesLoading] = useState(true);
 
   const idsKey = empreendimentoIds.join(",");
 
   useEffect(() => {
     if (empreendimentoIds.length === 0) {
-      queueMicrotask(() => setAcoesPPC(null));
+      queueMicrotask(() => {
+        setAcoesPPC(null);
+        setAcoesLoading(false);
+      });
       return;
     }
     const ac = new AbortController();
+    queueMicrotask(() => {
+      if (!ac.signal.aborted) setAcoesLoading(true);
+    });
     const weekStart = weeklyActionsWeekStartFromReuniao(previousReuniaoTuesdayIso());
     Promise.all(
       empreendimentoIds.map((id) =>
@@ -92,35 +112,78 @@ export function PpcConsolidadoHero({ meta, taxas, real, empreendimentoIds }: Pro
       })
       .catch(() => {
         if (!ac.signal.aborted) setAcoesPPC(null);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setAcoesLoading(false);
       });
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey, weeklyActionsVersion]);
 
-  const vendasPPC = useMemo(() => calcPPC(real.vendas, meta), [real.vendas, meta]);
-  const funilPPC = useMemo(() => avgFunilPpc(real, meta, taxas), [real, meta, taxas]);
+  const inputsReady =
+    !acoesLoading && !funnelLoading && !pastasLoading && !salesPlanLoading && !taxasLoading;
+
+  const vendasPPC = useMemo(
+    () => (inputsReady ? calcPPC(real.vendas, meta) : null),
+    [inputsReady, real.vendas, meta],
+  );
+  const funilPPC = useMemo(
+    () => (inputsReady ? avgFunilPpc(real, meta, taxas) : null),
+    [inputsReady, real, meta, taxas],
+  );
+  const acoesReadyPPC = inputsReady ? acoesPPC : null;
 
   const consolidatedPPC = useMemo(() => {
-    const vals = [acoesPPC, vendasPPC, funilPPC].filter((p): p is number => p !== null);
+    if (!inputsReady) return null;
+    const vals = [acoesReadyPPC, vendasPPC, funilPPC].filter((p): p is number => p !== null);
     if (vals.length === 0) return null;
     return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
-  }, [acoesPPC, vendasPPC, funilPPC]);
+  }, [inputsReady, acoesReadyPPC, vendasPPC, funilPPC]);
 
   const subtitle = useMemo(() => {
+    if (!inputsReady) return "Carregando aderência…";
     if (consolidatedPPC === null) return "Sem dados consolidados.";
     if (consolidatedPPC > 85) return "Aderência dentro da meta (> 85%).";
     if (consolidatedPPC >= 70) return "Aderência em atenção (70% – 85%).";
     return "Aderência abaixo da meta (< 70%).";
-  }, [consolidatedPPC]);
+  }, [inputsReady, consolidatedPPC]);
+
+  if (!inputsReady) {
+    return <PpcHeroSkeleton />;
+  }
 
   return (
     <PpcHero
       consolidatedPPC={consolidatedPPC}
-      acoesPPC={acoesPPC}
+      acoesPPC={acoesReadyPPC}
       vendasPPC={vendasPPC}
       funilPPC={funilPPC}
       subtitle={subtitle}
     />
+  );
+}
+
+function PpcHeroSkeleton() {
+  return (
+    <div
+      className="resumo-ppc-hero resumo-ppc-hero--sk"
+      aria-busy="true"
+      aria-label="Carregando PPC consolidado"
+    >
+      <div className="resumo-ppc-hero-left">
+        <span className="sk sk-pulse resumo-sk-hero-lbl" aria-hidden />
+        <span className="sk sk-pulse resumo-sk-hero-val" aria-hidden />
+        <span className="sk sk-pulse resumo-sk-hero-sub" aria-hidden />
+      </div>
+      <div className="resumo-ppc-hero-right">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="resumo-ppc-hero-tile resumo-ppc-hero-tile--sk">
+            <span className="sk sk-pulse resumo-sk-tile-lbl" aria-hidden />
+            <span className="sk sk-pulse resumo-sk-tile-val" aria-hidden />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

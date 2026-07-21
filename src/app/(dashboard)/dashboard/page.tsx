@@ -7,7 +7,18 @@ import { RankingSkinsSection } from "./_components/ranking-skins-section";
 import { RegrasOuroCard } from "./_components/regras-ouro-card";
 
 export default function ResumoPage() {
-  const { semana, meta, taxas, real, goalsBreakdown, empreendimentoIds } = useDashboardData();
+  const {
+    semana,
+    meta,
+    taxas,
+    real,
+    goalsBreakdown,
+    empreendimentoIds,
+    funnelLoading,
+    pastasLoading,
+    salesPlanLoading,
+    taxasLoading,
+  } = useDashboardData();
 
   return (
     <div className="tc" data-active="true">
@@ -16,6 +27,10 @@ export default function ResumoPage() {
         taxas={taxas}
         real={real}
         empreendimentoIds={empreendimentoIds}
+        funnelLoading={funnelLoading}
+        pastasLoading={pastasLoading}
+        salesPlanLoading={salesPlanLoading}
+        taxasLoading={taxasLoading}
       />
       <CascadeCard
         semana={semana}

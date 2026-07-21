@@ -185,6 +185,8 @@ type DashboardContextValue = {
   performance: PerformanceNumbers;
   goalsBreakdown: GoalBreakdownEntry[];
   funnelLoading: boolean;
+  salesPlanLoading: boolean;
+  taxasLoading: boolean;
   pastasKpis: PastasKpis | null;
   pastasLoading: boolean;
   pastasError: string | null;
@@ -397,6 +399,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   );
 
   const funnelLoading = funilQuery.isFetching;
+  const salesPlanLoading = salesPlanQuery.isFetching;
+  const taxasLoading = taxasQuery.isFetching;
   const pastasLoading = pastasQuery.isFetching;
   const pastasError = pastasQuery.isError
     ? pastasQuery.error instanceof Error
@@ -425,6 +429,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       performance,
       goalsBreakdown,
       funnelLoading,
+      salesPlanLoading,
+      taxasLoading,
       pastasKpis,
       pastasLoading,
       pastasError,
@@ -444,6 +450,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       performance,
       goalsBreakdown,
       funnelLoading,
+      salesPlanLoading,
+      taxasLoading,
       pastasKpis,
       pastasLoading,
       pastasError,
