@@ -10879,6 +10879,16 @@ body {
   text-transform: uppercase;
   opacity: 0.65;
 }
+.apv-tag-emp {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .apv-item[data-cat="campo"] .apv-tag {
   background: #dbeafe;
   color: #1e40af;

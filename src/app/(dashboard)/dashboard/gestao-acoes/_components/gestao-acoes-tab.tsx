@@ -8,8 +8,8 @@ import { OutboundTab } from "../../outbound/_components/outbound-tab";
 import { AcoesResultadosSection } from "../../acoes-semana/_components/acoes-resultados-section";
 
 type Props = {
-  empresa: string;
   empresaLabel: string;
+  empresaNomeById?: Record<number, string>;
   semNome: boolean;
   semana: number;
   onSemanaChange: (next: number) => void;
@@ -30,8 +30,8 @@ const SUB_TABS: {
 ];
 
 export function GestaoAcoesTab({
-  empresa,
   empresaLabel,
+  empresaNomeById = {},
   semNome,
   semana,
   onSemanaChange,
@@ -94,8 +94,9 @@ export function GestaoAcoesTab({
           <div className="gestao-acoes-resultado">
             <AcoesResultadosSection
               embedded
-              empresa={empresa}
+              empreendimentoIds={empreendimentoIds}
               empresaLabel={empresaLabel}
+              empresaNomeById={empresaNomeById}
               semNome={semNome}
             />
             <section className="gestao-acoes-outbound" aria-label="Leads e ROI das ações">

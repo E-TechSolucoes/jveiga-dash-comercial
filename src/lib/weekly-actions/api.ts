@@ -45,16 +45,33 @@ type WeeklyActionListResponse = {
 };
 
 export type WeeklyActionsQuery = {
-  empreendimentoId: number;
+  /** Atalho de um único empreendimento (legado). */
+  empreendimentoId?: number;
+  /** Um ou mais empreendimentos (até 3). Tem precedência sobre `empreendimentoId`. */
+  empreendimentoIds?: number[];
   weekStart: string;
 };
+
+const WEEKLY_ACTIONS_MAX_ENTERPRISES = 3;
+
+function resolveEmpreendimentoIds(query: WeeklyActionsQuery): number[] {
+  const fromMulti = (query.empreendimentoIds ?? [])
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .slice(0, WEEKLY_ACTIONS_MAX_ENTERPRISES);
+  if (fromMulti.length > 0) return fromMulti;
+  const single = query.empreendimentoId;
+  if (single != null && Number.isFinite(single) && single > 0) return [single];
+  return [];
+}
 
 export async function listWeeklyActions(
   query: WeeklyActionsQuery,
   signal?: AbortSignal,
 ): Promise<WeeklyActionDTO[]> {
+  const ids = resolveEmpreendimentoIds(query);
+  if (ids.length === 0) return [];
   const qs = new URLSearchParams({
-    empreendimento_id: String(query.empreendimentoId),
+    empreendimento_ids: ids.join(","),
     week_start: query.weekStart,
   });
   const res = await apiFetch<WeeklyActionListResponse>(`/api/v1/weekly-actions?${qs.toString()}`, {

@@ -59,8 +59,11 @@ function pctCls(pct: number | null): PpcCls {
 }
 
 type Props = {
-  empresa: string;
+  /** Empreendimentos selecionados (1–3). */
+  empreendimentoIds: number[];
   empresaLabel: string;
+  /** Nome por id — usado no badge do card quando há mais de um. */
+  empresaNomeById?: Record<number, string>;
   semNome: boolean;
   embedded?: boolean;
 };
@@ -81,11 +84,19 @@ const API_CATEGORY_TO_KEY: Record<WeeklyActionCategory, CategoryKey> = {
   other: "outro",
 };
 
-function parseEmpreendimentoId(empresa: string): number | null {
-  if (!empresa) return null;
-  if (empresa.startsWith("sem-id-") || empresa.startsWith("sem-codigo-")) return null;
-  const n = Number.parseInt(empresa, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+const MAX_ENTERPRISES = 3;
+
+function normalizeEmpreendimentoIds(ids: number[]): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const raw of ids) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= MAX_ENTERPRISES) break;
+  }
+  return out;
 }
 
 function fmtDate(iso: string | null): string {
@@ -134,12 +145,18 @@ function groupByCategory(items: WeeklyActionDTO[]): Record<CategoryKey, WeeklyAc
 }
 
 export function AcoesResultadosSection({
-  empresa,
+  empreendimentoIds: empreendimentoIdsProp,
   empresaLabel,
+  empresaNomeById = {},
   semNome,
   embedded = false,
 }: Props) {
-  const empreendimentoId = useMemo(() => parseEmpreendimentoId(empresa), [empresa]);
+  const empreendimentoIds = useMemo(
+    () => normalizeEmpreendimentoIds(empreendimentoIdsProp),
+    [empreendimentoIdsProp],
+  );
+  const hasEmpreendimentoIds = empreendimentoIds.length > 0;
+  const idsKey = empreendimentoIds.join(",");
   // Teto da navegação: semana comercial atual (Ter→Seg). Congelado na montagem.
   const [maxReuniaoTuesday] = useState<string>(() => currentReuniaoTuesdayIso());
   const [reuniaoTuesday, setReuniaoTuesday] = useState<string>(maxReuniaoTuesday);
@@ -163,7 +180,7 @@ export function AcoesResultadosSection({
   // Ações da Semana) quando estamos olhando a mesma semana.
   const weeklyActionsVersion = useResourceVersion("weekly-actions");
 
-  const fetchKey = empreendimentoId != null ? `${empreendimentoId}:${weekStart}` : "";
+  const fetchKey = hasEmpreendimentoIds ? `${idsKey}:${weekStart}` : "";
   const [trackedFetchKey, setTrackedFetchKey] = useState("");
   if (fetchKey !== trackedFetchKey) {
     setTrackedFetchKey(fetchKey);
@@ -288,9 +305,9 @@ export function AcoesResultadosSection({
   );
 
   useEffect(() => {
-    if (empreendimentoId == null) return;
+    if (!hasEmpreendimentoIds) return;
     const controller = new AbortController();
-    listWeeklyActions({ empreendimentoId, weekStart }, controller.signal)
+    listWeeklyActions({ empreendimentoIds, weekStart }, controller.signal)
       .then((data) => {
         setItems(data);
         setLoading(false);
@@ -304,7 +321,7 @@ export function AcoesResultadosSection({
         setLoading(false);
       });
     return () => controller.abort();
-  }, [empreendimentoId, weekStart, weeklyActionsVersion]);
+  }, [empreendimentoIds, hasEmpreendimentoIds, weekStart, weeklyActionsVersion]);
 
   const totals = useMemo(() => {
     const total = items.length;
@@ -344,8 +361,8 @@ export function AcoesResultadosSection({
         <div className="acoes-banner">
           <AlertTriangle size={16} strokeWidth={2.25} aria-hidden />
           <div>
-            <strong>Empreendimento:</strong> selecione um empreendimento no filtro superior para
-            acompanhar os resultados das ações da semana.
+            <strong>Empreendimento:</strong> selecione um ou mais empreendimentos (até{" "}
+            {MAX_ENTERPRISES}) no filtro superior para acompanhar os resultados das ações da semana.
           </div>
         </div>
       ) : null}
@@ -356,7 +373,7 @@ export function AcoesResultadosSection({
             <CalendarDays size={11} strokeWidth={2.5} aria-hidden /> Total registrado
           </span>
           <strong className="acoes-stat-value">
-            {empreendimentoId == null ? "—" : loading ? "…" : totals.total}
+            {!hasEmpreendimentoIds ? "—" : loading ? "…" : totals.total}
           </strong>
           <span className="acoes-stat-sub">na semana {weekLabel}</span>
         </div>
@@ -365,7 +382,7 @@ export function AcoesResultadosSection({
             <Target size={11} strokeWidth={2.5} aria-hidden /> Campo
           </span>
           <strong className="acoes-stat-value">
-            {empreendimentoId == null ? "—" : loading ? "…" : totals.campo}
+            {!hasEmpreendimentoIds ? "—" : loading ? "…" : totals.campo}
           </strong>
           <span className="acoes-stat-sub">ações de campo</span>
         </div>
@@ -374,7 +391,7 @@ export function AcoesResultadosSection({
             <Sparkles size={11} strokeWidth={2.5} aria-hidden /> Treino
           </span>
           <strong className="acoes-stat-value">
-            {empreendimentoId == null ? "—" : loading ? "…" : totals.treino}
+            {!hasEmpreendimentoIds ? "—" : loading ? "…" : totals.treino}
           </strong>
           <span className="acoes-stat-sub">treinamentos</span>
         </div>
@@ -383,7 +400,7 @@ export function AcoesResultadosSection({
             <Target size={11} strokeWidth={2.5} aria-hidden /> Premiação
           </span>
           <strong className="acoes-stat-value">
-            {empreendimentoId == null ? "—" : loading ? "…" : totals.premio}
+            {!hasEmpreendimentoIds ? "—" : loading ? "…" : totals.premio}
           </strong>
           <span className="acoes-stat-sub">premiações</span>
         </div>
@@ -431,7 +448,7 @@ export function AcoesResultadosSection({
       <section className="acoes-card">
         <div className="acoes-toolbar">
           <span className="acoes-toolbar-hint">
-            {empreendimentoId == null
+            {!hasEmpreendimentoIds
               ? "Selecione um empreendimento"
               : loading
                 ? "Carregando…"
@@ -444,7 +461,9 @@ export function AcoesResultadosSection({
           loading={loading}
           error={error}
           semNome={semNome}
-          hasEmpreendimentoId={empreendimentoId != null}
+          hasEmpreendimentoIds={hasEmpreendimentoIds}
+          showEmpresaBadge={empreendimentoIds.length > 1}
+          empresaNomeById={empresaNomeById}
           isCurrentWeek={isCurrentWeek}
           savingIds={savingIds}
           completedDrafts={completedDrafts}
@@ -469,7 +488,9 @@ function PreviousList({
   loading,
   error,
   semNome,
-  hasEmpreendimentoId,
+  hasEmpreendimentoIds,
+  showEmpresaBadge,
+  empresaNomeById,
   isCurrentWeek,
   savingIds,
   completedDrafts,
@@ -484,7 +505,9 @@ function PreviousList({
   loading: boolean;
   error: string | null;
   semNome: boolean;
-  hasEmpreendimentoId: boolean;
+  hasEmpreendimentoIds: boolean;
+  showEmpresaBadge: boolean;
+  empresaNomeById: Record<number, string>;
   isCurrentWeek: boolean;
   savingIds: Set<string>;
   completedDrafts: Record<string, boolean>;
@@ -495,7 +518,7 @@ function PreviousList({
   onRealizadoChange: (id: string, raw: string) => void;
   onSaveCard: (action: WeeklyActionDTO) => void;
 }) {
-  if (semNome || !hasEmpreendimentoId) {
+  if (semNome || !hasEmpreendimentoIds) {
     return (
       <div className="acoes-empty">
         <Sparkles size={18} strokeWidth={2} aria-hidden />
@@ -612,6 +635,11 @@ function PreviousList({
               <div className="apv-tag" data-cat={cat}>
                 <span className="apv-tag-label">{a.action_type}</span>
                 <span className="apv-tag-group">{TAG_LABEL[cat]}</span>
+                {showEmpresaBadge ? (
+                  <span className="apv-tag-emp">
+                    {empresaNomeById[a.empreendimento_id] || String(a.empreendimento_id)}
+                  </span>
+                ) : null}
               </div>
               <div className="apv-body">
                 {a.description ? <div className="apv-desc">{a.description}</div> : null}

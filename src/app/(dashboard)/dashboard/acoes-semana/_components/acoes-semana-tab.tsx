@@ -7,8 +7,9 @@ import { AcoesTab } from "./acoes-tab";
 import { AcoesResultadosSection } from "./acoes-resultados-section";
 
 type Props = {
-  empresa: string;
+  empreendimentoIds: number[];
   empresaLabel: string;
+  empresaNomeById?: Record<number, string>;
   semNome: boolean;
 };
 
@@ -24,7 +25,12 @@ const SUB_TABS: {
   { id: "resultado", label: "Resultado das Ações", Icon: ClipboardList, variant: "emerald" },
 ];
 
-export function AcoesSemanaTab({ empresa, empresaLabel, semNome }: Props) {
+export function AcoesSemanaTab({
+  empreendimentoIds,
+  empresaLabel,
+  empresaNomeById = {},
+  semNome,
+}: Props) {
   const [sub, setSub] = useState<SubTabId>("planejamento");
 
   return (
@@ -72,12 +78,18 @@ export function AcoesSemanaTab({ empresa, empresaLabel, semNome }: Props) {
 
       <div className="acoes-semana-panel" role="tabpanel">
         {sub === "planejamento" ? (
-          <AcoesTab embedded empresa={empresa} empresaLabel={empresaLabel} semNome={semNome} />
+          <AcoesTab
+            embedded
+            empresa={String(empreendimentoIds[0] ?? "")}
+            empresaLabel={empresaLabel}
+            semNome={semNome}
+          />
         ) : (
           <AcoesResultadosSection
             embedded
-            empresa={empresa}
+            empreendimentoIds={empreendimentoIds}
             empresaLabel={empresaLabel}
+            empresaNomeById={empresaNomeById}
             semNome={semNome}
           />
         )}
