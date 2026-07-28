@@ -42,26 +42,30 @@ export function reuniaoWeekEndIso(tuesdayStartIso: string): string {
 }
 
 export type ReuniaoWeekBounds = {
+  /** Terça 00:00 (início). */
   from: string;
+  /** Segunda inclusive (semana civil completa do rótulo). Dias futuros vêm vazios do BQ. */
   to: string;
+  /** Segunda de encerramento civil (rótulo) — igual a `to`. */
   fullEnd: string;
 };
 
+/**
+ * Limites da semana comercial Ter→Seg (sempre o intervalo completo do rótulo).
+ * Dias futuros ainda sem dado no banco simplesmente retornam zero.
+ */
 export function getReuniaoWeekBounds(
   tuesdayStartIso: string,
-  reference = new Date(),
+  _reference = new Date(),
 ): ReuniaoWeekBounds {
   const tue = parseLocalYmd(tuesdayStartIso);
   if (!tue) {
     return { from: tuesdayStartIso, to: tuesdayStartIso, fullEnd: tuesdayStartIso };
   }
-  const mon = addDays(tue, 6);
-  const fullEnd = formatLocalIsoDate(mon);
-  const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-  const to = today.getTime() < mon.getTime() ? formatLocalIsoDate(today) : fullEnd;
+  const fullEnd = formatLocalIsoDate(addDays(tue, 6));
   return {
     from: formatLocalIsoDate(tue),
-    to,
+    to: fullEnd,
     fullEnd,
   };
 }

@@ -1069,6 +1069,10 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .resumo-ppc-hero-val {
   font-size: clamp(48px, 6vw, 72px);
@@ -1197,6 +1201,65 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.resumo-ppc-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
+  cursor: help;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.resumo-ppc-tip:hover,
+.resumo-ppc-tip:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+.resumo-ppc-tip:focus-visible {
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.12);
+}
+.resumo-ppc-tip-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: none;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  cursor: default;
+}
+.resumo-ppc-hero-tile .resumo-ppc-tip-pop {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.resumo-ppc-tip:hover .resumo-ppc-tip-pop,
+.resumo-ppc-tip:focus-within .resumo-ppc-tip-pop {
+  display: block;
 }
 .resumo-ppc-hero-tile-val {
   font-size: 26px;

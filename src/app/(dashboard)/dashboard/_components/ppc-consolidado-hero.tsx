@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Info } from "lucide-react";
 
 import { useResourceVersion } from "@/lib/dashboard/data-bus";
 import {
@@ -9,7 +10,14 @@ import {
 } from "@/lib/dashboard/reuniao-week";
 import { listWeeklyActions, type WeeklyActionDTO } from "@/lib/weekly-actions/api";
 
-import { computeCascadeRemaining, type FunnelNumbers, type Taxas } from "./types";
+import { avgFunilPpc, calcPPC } from "./resumo-ppc";
+import type { FunnelNumbers, Taxas } from "./types";
+
+const PPC_TIP_CONSOLIDADO = "Média de Ações + Vendas + Funil. Ex.: (63% + 0% + 25%) ÷ 3 = 29%.";
+const PPC_TIP_ACOES = "Quanto das ações da semana anterior foi cumprido (realizado ÷ meta).";
+const PPC_TIP_VENDAS = "Vendas da semana ÷ meta de vendas da semana (parte do plano do mês).";
+const PPC_TIP_FUNIL =
+  "Média do avanço em leads, visitas, pastas e vendas frente ao necessário para a meta.";
 
 type Props = {
   meta: number;
@@ -20,12 +28,9 @@ type Props = {
   pastasLoading: boolean;
   salesPlanLoading: boolean;
   taxasLoading: boolean;
+  /** Rótulo da semana de reunião (ex.: 28/07 – 03/08). */
+  weekLabel?: string;
 };
-
-function calcPPC(real: number, meta: number): number | null {
-  if (!Number.isFinite(meta) || meta <= 0) return null;
-  return Math.round((real / meta) * 100);
-}
 
 function ppcHeroTone(ppc: number | null): "ok" | "warn" | "alert" {
   if (ppc === null) return "alert";
@@ -52,24 +57,6 @@ function calcAcoesPPC(actions: WeeklyActionDTO[]): number | null {
   return calcPPC(acoesReal, acoesMeta);
 }
 
-function avgFunilPpc(real: FunnelNumbers, meta: number, taxas: Taxas): number | null {
-  if (!(meta > 0)) return null;
-  const cascade = computeCascadeRemaining({
-    meta,
-    taxas,
-    vendasRealizadas: real.vendas,
-    real: { leads: real.leads, visitas: real.visitas, pastas: real.pastas },
-  });
-  const stages = [
-    calcPPC(real.leads, cascade.leads),
-    calcPPC(real.visitas, cascade.visitas),
-    calcPPC(real.pastas, cascade.pastas),
-    calcPPC(real.vendas, meta),
-  ].filter((p): p is number => p !== null);
-  if (stages.length === 0) return null;
-  return Math.round(stages.reduce((a, b) => a + b, 0) / stages.length);
-}
-
 export function PpcConsolidadoHero({
   meta,
   taxas,
@@ -79,6 +66,7 @@ export function PpcConsolidadoHero({
   pastasLoading,
   salesPlanLoading,
   taxasLoading,
+  weekLabel,
 }: Props) {
   const weeklyActionsVersion = useResourceVersion("weekly-actions");
   const [acoesPPC, setAcoesPPC] = useState<number | null>(null);
@@ -98,6 +86,7 @@ export function PpcConsolidadoHero({
     queueMicrotask(() => {
       if (!ac.signal.aborted) setAcoesLoading(true);
     });
+    // Mesma regra do dash vendas: ações da semana de reunião anterior.
     const weekStart = weeklyActionsWeekStartFromReuniao(previousReuniaoTuesdayIso());
     Promise.all(
       empreendimentoIds.map((id) =>
@@ -123,6 +112,9 @@ export function PpcConsolidadoHero({
   const inputsReady =
     !acoesLoading && !funnelLoading && !pastasLoading && !salesPlanLoading && !taxasLoading;
 
+  const semDadosBQ =
+    inputsReady && real.leads === 0 && real.visitas === 0 && real.pastas === 0 && real.vendas === 0;
+
   const vendasPPC = useMemo(
     () => (inputsReady ? calcPPC(real.vendas, meta) : null),
     [inputsReady, real.vendas, meta],
@@ -142,11 +134,12 @@ export function PpcConsolidadoHero({
 
   const subtitle = useMemo(() => {
     if (!inputsReady) return "Carregando aderência…";
+    if (semDadosBQ) return "Sem dados consolidados no BigQuery para a semana.";
     if (consolidatedPPC === null) return "Sem dados consolidados.";
     if (consolidatedPPC > 85) return "Aderência dentro da meta (> 85%).";
     if (consolidatedPPC >= 70) return "Aderência em atenção (70% – 85%).";
     return "Aderência abaixo da meta (< 70%).";
-  }, [inputsReady, consolidatedPPC]);
+  }, [inputsReady, semDadosBQ, consolidatedPPC]);
 
   if (!inputsReady) {
     return <PpcHeroSkeleton />;
@@ -159,6 +152,7 @@ export function PpcConsolidadoHero({
       vendasPPC={vendasPPC}
       funilPPC={funilPPC}
       subtitle={subtitle}
+      weekLabel={weekLabel}
     />
   );
 }
@@ -193,12 +187,14 @@ function PpcHero({
   vendasPPC,
   funilPPC,
   subtitle,
+  weekLabel,
 }: {
   consolidatedPPC: number | null;
   acoesPPC: number | null;
   vendasPPC: number | null;
   funilPPC: number | null;
   subtitle: string;
+  weekLabel?: string;
 }) {
   const fmt = (v: number | null) => (v === null ? "—" : `${v}%`);
   const heroTone = ppcHeroTone(consolidatedPPC);
@@ -206,22 +202,47 @@ function PpcHero({
   return (
     <div className="resumo-ppc-hero" data-tone={heroTone}>
       <div className="resumo-ppc-hero-left">
-        <div className="resumo-ppc-hero-label">PPC Consolidado — Visão da Semana</div>
+        <div className="resumo-ppc-hero-label">
+          PPC Consolidado — Visão da Semana
+          {weekLabel ? ` · ${weekLabel}` : ""}
+          <PpcTip text={PPC_TIP_CONSOLIDADO} label="Como o PPC consolidado é calculado" />
+        </div>
         <div className={`resumo-ppc-hero-val ${heroValCls}`}>
           {consolidatedPPC === null ? "—" : `${consolidatedPPC}%`}
         </div>
         <div className="resumo-ppc-hero-sub">{subtitle}</div>
       </div>
       <div className="resumo-ppc-hero-right">
-        <HeroTile lbl="Ações" val={fmt(acoesPPC)} ppc={acoesPPC} />
-        <HeroTile lbl="Vendas" val={fmt(vendasPPC)} ppc={vendasPPC} />
-        <HeroTile lbl="Funil" val={fmt(funilPPC)} ppc={funilPPC} />
+        <HeroTile lbl="Ações" val={fmt(acoesPPC)} ppc={acoesPPC} tip={PPC_TIP_ACOES} />
+        <HeroTile lbl="Vendas" val={fmt(vendasPPC)} ppc={vendasPPC} tip={PPC_TIP_VENDAS} />
+        <HeroTile lbl="Funil" val={fmt(funilPPC)} ppc={funilPPC} tip={PPC_TIP_FUNIL} />
       </div>
     </div>
   );
 }
 
-function HeroTile({ lbl, val, ppc }: { lbl: string; val: string; ppc: number | null }) {
+function PpcTip({ text, label }: { text: string; label: string }) {
+  return (
+    <button type="button" className="resumo-ppc-tip" aria-label={label}>
+      <Info size={13} strokeWidth={2.25} aria-hidden />
+      <span className="resumo-ppc-tip-pop" role="tooltip">
+        {text}
+      </span>
+    </button>
+  );
+}
+
+function HeroTile({
+  lbl,
+  val,
+  ppc,
+  tip,
+}: {
+  lbl: string;
+  val: string;
+  ppc: number | null;
+  tip: string;
+}) {
   const tone = ppc === null ? "empty" : ppcHeroTone(ppc);
   const palette =
     tone === "ok"
@@ -243,6 +264,7 @@ function HeroTile({ lbl, val, ppc }: { lbl: string; val: string; ppc: number | n
     >
       <span className="resumo-ppc-hero-tile-lbl" style={{ color: palette.fg }}>
         {lbl}
+        <PpcTip text={tip} label={`Como ${lbl.toLowerCase()} é calculado`} />
       </span>
       <span className="resumo-ppc-hero-tile-val" style={{ color: palette.fg }}>
         {val}

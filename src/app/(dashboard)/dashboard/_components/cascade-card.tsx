@@ -14,15 +14,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  computeCascadeRemaining,
-  fmt,
-  pct,
-  stageStatus,
-  type FunnelNumbers,
-  type StageStatus,
-  type Taxas,
-} from "./types";
+import { cascadeStageTargets } from "./resumo-ppc";
+import { fmt, pct, stageStatus, type FunnelNumbers, type StageStatus, type Taxas } from "./types";
 
 export type GoalBreakdownEntry = {
   id: number;
@@ -31,7 +24,8 @@ export type GoalBreakdownEntry = {
 };
 
 type Props = {
-  semana: number;
+  /** Rótulo da semana de reunião (ex.: 28/07 – 03/08) ou número ISO. */
+  weekLabel: string;
   meta: number;
   taxas: Taxas;
   real: FunnelNumbers;
@@ -79,22 +73,18 @@ function Stage({ label, Icon, real, target }: Omit<StageDef, "key">) {
   );
 }
 
-export function CascadeCard({ semana, meta, taxas, real, goalsBreakdown }: Props) {
+export function CascadeCard({ weekLabel, meta, taxas, real, goalsBreakdown }: Props) {
   const breakdown = goalsBreakdown ?? [];
   const showBreakdown = breakdown.length > 1;
   const breakdownTotal = breakdown.reduce((sum, g) => sum + g.value, 0);
-  const targets = computeCascadeRemaining({
-    meta,
-    taxas,
-    vendasRealizadas: real.vendas,
-    real: { leads: real.leads, visitas: real.visitas, pastas: real.pastas },
-  });
+  // Mesma regra do dash vendas: meta de etapa = necessário para vendas restantes.
+  const targets = cascadeStageTargets(real, meta, taxas);
 
   const stages: StageDef[] = [
     { key: "leads", label: "Leads", Icon: Radio, real: real.leads, target: targets.leads },
     { key: "visitas", label: "Visitas", Icon: Home, real: real.visitas, target: targets.visitas },
     { key: "pastas", label: "Pastas", Icon: FolderOpen, real: real.pastas, target: targets.pastas },
-    { key: "vendas", label: "Vendas", Icon: Trophy, real: real.vendas, target: meta },
+    { key: "vendas", label: "Vendas", Icon: Trophy, real: real.vendas, target: targets.vendas },
   ];
 
   // "worst" diagnostica gargalo no funil de pré-venda; exclui Vendas para não
@@ -138,7 +128,7 @@ export function CascadeCard({ semana, meta, taxas, real, goalsBreakdown }: Props
             <span className="title-ico" aria-hidden>
               <Target size={18} strokeWidth={2} />
             </span>
-            Cascata da Meta — Semana {semana}
+            Cascata da Meta — {weekLabel}
           </div>
         </div>
         <div className="meta-edit">
