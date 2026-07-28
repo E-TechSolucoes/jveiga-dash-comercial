@@ -3,28 +3,30 @@
 import { useMemo } from "react";
 
 import { useDashboardData } from "../_components/dashboard-provider";
-import { AcompanhamentoTab } from "./_components/acompanhamento-tab";
+import { AcompanhamentoTab, type AcompanhamentoEnterprise } from "./_components/acompanhamento-tab";
 
 export default function AcompanhamentoPage() {
   const { empresasCodigos, empresasNomes, empresasKey } = useDashboardData();
 
-  const empresa = empresasCodigos[0] ?? "";
-  const empresaLabel = useMemo(() => {
-    if (empresasCodigos.length === 0) return "";
-    const codigo = empresasCodigos[0];
-    const nome = empresasNomes[0] ?? "";
-    return codigo && nome ? `${codigo} - ${nome}` : nome || codigo;
+  const enterprises = useMemo<AcompanhamentoEnterprise[]>(() => {
+    const n = Math.min(empresasCodigos.length, empresasNomes.length || empresasCodigos.length);
+    const out: AcompanhamentoEnterprise[] = [];
+    for (let i = 0; i < empresasCodigos.length; i++) {
+      const code = empresasCodigos[i];
+      if (!code) continue;
+      // nomes podem ficar desalinhados se algum código não tiver label —
+      // preferimos o nome no mesmo índice; senão só o código.
+      const name = empresasNomes[i] ?? empresasNomes[Math.min(i, n - 1)] ?? "";
+      out.push({ code, name });
+    }
+    return out;
   }, [empresasCodigos, empresasNomes]);
-  const semNome = empresasCodigos.length === 0;
+
+  const semNome = enterprises.length === 0;
 
   return (
     <div className="tc" data-active="true">
-      <AcompanhamentoTab
-        key={empresasKey}
-        empresa={empresa}
-        empresaLabel={empresaLabel}
-        semNome={semNome}
-      />
+      <AcompanhamentoTab key={empresasKey} enterprises={enterprises} semNome={semNome} />
     </div>
   );
 }

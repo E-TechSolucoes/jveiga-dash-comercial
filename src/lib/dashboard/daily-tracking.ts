@@ -38,6 +38,8 @@ export type DailyTrackingWeekResponse = {
   week_start: string;
   week_of_year: number;
   enterprise_code: string;
+  /** Presente quando a semana foi pedida com 1–3 empreendimentos. */
+  enterprise_codes?: string[];
   items: DailyTrackingDTO[];
 };
 
@@ -83,24 +85,32 @@ export function isDailyTrackingApiError(value: unknown): value is DailyTrackingA
 }
 
 const BULK_LIMIT = 1000;
+/** Limite de produto: painel permite até 3 empreendimentos selecionados. */
+export const DAILY_TRACKING_MAX_ENTERPRISES = 3;
 
 /**
  * IMPORTANTE: o status final (`validated` vs `pending`) é decidido pelo
- * backend por **request**, contando se chegaram as 54 células distintas
- * (6 indicadores × 9 dias, Seg → Ter da semana seguinte) de uma
- * `(week_start, enterprise_code)`. Não fragmente um grid completo em
- * múltiplas chamadas — todas voltariam como `pending`.
+ * backend por **grupo** `(week_start, enterprise_code)`, contando se
+ * chegaram as 54 células distintas (6 indicadores × 9 dias). Com
+ * multi-empreendimento, envie 54 × N itens (N ≤ 3) no mesmo bulk —
+ * cada empreendimento é validado de forma independente.
  */
 
 export function getDailyTrackingWeek(
-  enterpriseCode: string,
+  enterpriseCodes: string | string[],
   weekStart: string,
   signal?: AbortSignal,
+  opts?: { shared?: boolean },
 ): Promise<DailyTrackingWeekResponse> {
+  const codes = (Array.isArray(enterpriseCodes) ? enterpriseCodes : [enterpriseCodes])
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .slice(0, DAILY_TRACKING_MAX_ENTERPRISES);
   const qs = new URLSearchParams({
-    enterprise_code: enterpriseCode,
+    enterprise_code: codes.join(","),
     week_start: weekStart,
-  }).toString();
+  });
+  if (opts?.shared) qs.set("shared", "true");
   return apiFetch<DailyTrackingWeekResponse>(`/api/v1/daily-tracking/week?${qs}`, { signal });
 }
 

@@ -16,6 +16,7 @@ import {
   bulkUpsertDailyTracking,
   currentWeekStartIsoMonday,
   DAILY_TRACKING_INDICATORS,
+  DAILY_TRACKING_MAX_ENTERPRISES,
   describeApiError,
   getDailyTrackingWeek,
   type DailyTrackingDayIndex,
@@ -27,9 +28,13 @@ import {
 
 import { Toast, type ToastKind } from "../../_components/toast";
 
+export type AcompanhamentoEnterprise = {
+  code: string;
+  name: string;
+};
+
 type Props = {
-  empresa: string;
-  empresaLabel: string;
+  enterprises: AcompanhamentoEnterprise[];
   semNome: boolean;
 };
 
@@ -111,6 +116,40 @@ function buildGridFromItems(items: DailyTrackingDTO[]): Grid {
   return grid;
 }
 
+/** Filtra células de um único empreendimento (evita colisão de day_index no grid). */
+function itemsForEnterprise(items: DailyTrackingDTO[], code: string): DailyTrackingDTO[] {
+  return items.filter((it) => it.enterprise_code === code);
+}
+
+/**
+ * Escolhe o empreendimento cujo grid alimentar a UI: o da seleção com
+ * maior soma de valores (grade mais completa); senão o primeiro.
+ */
+function pickDisplayEnterpriseCode(preferred: string[], items: DailyTrackingDTO[]): string | null {
+  if (preferred.length === 0) return null;
+  let best: string | null = null;
+  let bestScore = -1;
+  for (const code of preferred) {
+    const filtered = items.filter((it) => it.enterprise_code === code);
+    if (filtered.length === 0) continue;
+    const score = filtered.reduce((acc, it) => acc + (Number(it.value) || 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = code;
+    }
+  }
+  return best ?? preferred[0] ?? null;
+}
+
+function formatEnterprisesLabel(enterprises: AcompanhamentoEnterprise[]): string {
+  if (enterprises.length === 0) return "";
+  if (enterprises.length === 1) {
+    const e = enterprises[0]!;
+    return e.name ? `${e.code} - ${e.name}` : e.code;
+  }
+  return enterprises.map((e) => (e.name ? `${e.code} - ${e.name}` : e.code)).join(" · ");
+}
+
 /** Devolve enterprise_code (string numérica) ou null se a empresa não tem id. */
 function enterpriseCodeFromEmpresa(empresa: string): string | null {
   if (!empresa || empresa.startsWith("sem-id-") || empresa.startsWith("sem-codigo-")) {
@@ -121,13 +160,17 @@ function enterpriseCodeFromEmpresa(empresa: string): string | null {
   return String(n);
 }
 
-function enterpriseNameFromLabel(label: string): string | null {
-  if (!label) return null;
-  const emDash = label.indexOf(" — ");
-  if (emDash >= 0) return label.slice(emDash + 3).trim() || null;
-  const hyphen = label.indexOf(" - ");
-  if (hyphen >= 0) return label.slice(hyphen + 3).trim() || null;
-  return label.trim() || null;
+function resolveEnterprises(raw: AcompanhamentoEnterprise[]): AcompanhamentoEnterprise[] {
+  const out: AcompanhamentoEnterprise[] = [];
+  const seen = new Set<string>();
+  for (const e of raw) {
+    const code = enterpriseCodeFromEmpresa(e.code);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    out.push({ code, name: e.name.trim() });
+    if (out.length >= DAILY_TRACKING_MAX_ENTERPRISES) break;
+  }
+  return out;
 }
 
 // ---- Helpers de data (UTC, lex-comparáveis em "YYYY-MM-DD") ----
@@ -214,9 +257,12 @@ function statusBadgeProps(status: Status): { label: string; tone: "pend" | "val"
   return { label: "Pendente", tone: "pend" };
 }
 
-export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
-  const enterpriseCode = useMemo(() => enterpriseCodeFromEmpresa(empresa), [empresa]);
-  const enterpriseName = useMemo(() => enterpriseNameFromLabel(empresaLabel), [empresaLabel]);
+export function AcompanhamentoTab({ enterprises: enterprisesProp, semNome }: Props) {
+  const enterprises = useMemo(() => resolveEnterprises(enterprisesProp), [enterprisesProp]);
+  const enterpriseCodes = useMemo(() => enterprises.map((e) => e.code), [enterprises]);
+  const enterprisesKey = enterpriseCodes.join(",");
+  const empresaLabel = useMemo(() => formatEnterprisesLabel(enterprises), [enterprises]);
+  const hasEnterpriseCodes = enterpriseCodes.length > 0;
 
   // Segunda-feira ISO da semana corrente — congelada na montagem para servir
   // de teto da navegação (não permitimos navegar para o futuro).
@@ -228,28 +274,37 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
   const [saving, setSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<{ kind: ToastKind; message: string } | null>(null);
 
-  // Reset grid quando empresa muda — pattern do React docs ("Resetting state
-  // when a prop changes") em vez de useEffect, pra não disparar render extra.
-  const [lastEnterpriseCode, setLastEnterpriseCode] = useState<string | null>(enterpriseCode);
-  if (enterpriseCode !== lastEnterpriseCode) {
-    setLastEnterpriseCode(enterpriseCode);
+  // Reset grid quando a seleção de empreendimentos muda — pattern do React
+  // docs ("Resetting state when a prop changes") em vez de useEffect.
+  const [lastEnterprisesKey, setLastEnterprisesKey] = useState<string>(enterprisesKey);
+  if (enterprisesKey !== lastEnterprisesKey) {
+    setLastEnterprisesKey(enterprisesKey);
     setGrid(emptyGrid());
-    setLoading(Boolean(enterpriseCode));
+    setLoading(hasEnterpriseCodes);
   }
 
   // Track current load to ignore stale responses (StrictMode + abort).
   const loadKeyRef = useRef<string>("");
 
   useEffect(() => {
-    if (!enterpriseCode) return;
-    const key = `${enterpriseCode}|${weekStart}`;
+    if (!hasEnterpriseCodes) return;
+    const key = `${enterprisesKey}|${weekStart}`;
     loadKeyRef.current = key;
     const ac = new AbortController();
     void (async () => {
       try {
-        const data = await getDailyTrackingWeek(enterpriseCode, weekStart, ac.signal);
+        const data = await getDailyTrackingWeek(enterpriseCodes, weekStart, ac.signal, {
+          // Grade do estande (não só do usuário logado) — a recepção grava
+          // e qualquer operador precisa ver/editar a mesma semana.
+          shared: true,
+        });
         if (loadKeyRef.current !== key) return;
-        setGrid(buildGridFromItems(data.items));
+        const displayCode = pickDisplayEnterpriseCode(enterpriseCodes, data.items);
+        setGrid(
+          displayCode
+            ? buildGridFromItems(itemsForEnterprise(data.items, displayCode))
+            : emptyGrid(),
+        );
       } catch (err) {
         if (ac.signal.aborted) return;
         if (loadKeyRef.current !== key) return;
@@ -263,7 +318,7 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
       }
     })();
     return () => ac.abort();
-  }, [enterpriseCode, weekStart]);
+  }, [enterpriseCodes, enterprisesKey, hasEnterpriseCodes, weekStart]);
 
   const today = useMemo(() => todayIdxInWindow(weekStart), [weekStart]);
   const dayDates = useMemo(() => weekDayDates(weekStart), [weekStart]);
@@ -283,9 +338,9 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
       if (nextWeekStart > currentWeekStart) return; // bloqueia futuro
       setWeekStart(nextWeekStart);
       setGrid(emptyGrid());
-      if (enterpriseCode) setLoading(true);
+      if (hasEnterpriseCodes) setLoading(true);
     },
-    [weekStart, currentWeekStart, enterpriseCode],
+    [weekStart, currentWeekStart, hasEnterpriseCodes],
   );
 
   const goPrevWeek = useCallback(() => {
@@ -321,7 +376,7 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
       setToast({ kind: "error", message: "Selecione um empreendimento antes de salvar." });
       return;
     }
-    if (!enterpriseCode) {
+    if (!hasEnterpriseCodes) {
       setToast({
         kind: "error",
         message: "Empreendimento sem código numérico — não é possível salvar.",
@@ -331,29 +386,39 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
     void (async () => {
       setSaving(true);
       try {
-        // 1 só request: as 54 células num bulk. O backend decide se vira
-        // `validated` (recebeu as 54) ou `pending` (recebeu menos), e
-        // preenche `validated_at`/`validated_by` automaticamente.
+        // Replica o mesmo grid para cada empreendimento selecionado (até 3).
+        // O backend valida cada (week, enterprise) de forma independente.
         const items: UpsertDailyTrackingRequest[] = [];
-        for (const indicator of DAILY_TRACKING_INDICATORS) {
-          for (let dayIdx = 0; dayIdx < WEEK_DAYS; dayIdx++) {
-            const cell = grid[indicator][dayIdx];
-            items.push({
-              week_start: weekStart,
-              enterprise_code: enterpriseCode,
-              enterprise_name: enterpriseName,
-              indicator,
-              day_index: dayIdx as DailyTrackingDayIndex,
-              value: cell.value,
-            });
+        for (const ent of enterprises) {
+          for (const indicator of DAILY_TRACKING_INDICATORS) {
+            for (let dayIdx = 0; dayIdx < WEEK_DAYS; dayIdx++) {
+              const cell = grid[indicator][dayIdx];
+              items.push({
+                week_start: weekStart,
+                enterprise_code: ent.code,
+                enterprise_name: ent.name || null,
+                indicator,
+                day_index: dayIdx as DailyTrackingDayIndex,
+                value: cell.value,
+              });
+            }
           }
         }
         const upserted = await bulkUpsertDailyTracking(items);
 
-        setGrid(buildGridFromItems(upserted.items));
+        const displayCode = pickDisplayEnterpriseCode(enterpriseCodes, upserted.items);
+        setGrid(
+          displayCode
+            ? buildGridFromItems(itemsForEnterprise(upserted.items, displayCode))
+            : emptyGrid(),
+        );
+        const savedLabel =
+          enterprises.length === 1
+            ? empresaLabel || "este empreendimento"
+            : `${enterprises.length} empreendimentos (${empresaLabel})`;
         setToast({
           kind: "success",
-          message: `Acompanhamento salvo para ${empresaLabel || "este empreendimento"}.`,
+          message: `Acompanhamento salvo para ${savedLabel}.`,
         });
       } catch (err) {
         setToast({
@@ -364,9 +429,9 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
         setSaving(false);
       }
     })();
-  }, [enterpriseCode, enterpriseName, grid, weekStart, empresaLabel, semNome]);
+  }, [enterprises, enterpriseCodes, empresaLabel, grid, weekStart, semNome, hasEnterpriseCodes]);
 
-  const cellsDisabled = semNome || saving || loading || !enterpriseCode;
+  const cellsDisabled = semNome || saving || loading || !hasEnterpriseCodes;
 
   return (
     <div className="acoes-tab">
@@ -440,16 +505,17 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
         <div className="info-banner info-banner--warn">
           <AlertTriangle size={16} strokeWidth={2} />
           <div>
-            <strong>Empreendimento:</strong> selecione um empreendimento no filtro superior para
-            preencher o acompanhamento diário.
+            <strong>Empreendimento:</strong> selecione um ou mais empreendimentos (até{" "}
+            {DAILY_TRACKING_MAX_ENTERPRISES}) no filtro superior para preencher o acompanhamento
+            diário.
           </div>
         </div>
-      ) : !enterpriseCode ? (
+      ) : !hasEnterpriseCodes ? (
         <div className="info-banner info-banner--warn">
           <AlertTriangle size={16} strokeWidth={2} />
           <div>
-            <strong>Empreendimento sem código:</strong> este empreendimento não tem código numérico
-            cadastrado. O salvamento no servidor está desabilitado.
+            <strong>Empreendimento sem código:</strong> os empreendimentos selecionados não têm
+            código numérico cadastrado. O salvamento no servidor está desabilitado.
           </div>
         </div>
       ) : null}
@@ -587,11 +653,13 @@ export function AcompanhamentoTab({ empresa, empresaLabel, semNome }: Props) {
           <span className="acomp-action-info">
             {semNome
               ? "Selecione um empreendimento para preencher"
-              : !enterpriseCode
+              : !hasEnterpriseCodes
                 ? "Empreendimento sem código — salvar indisponível"
                 : loading
                   ? "Carregando dados…"
-                  : "Preencha ao longo da semana e clique em Salvar quando quiser"}
+                  : enterprises.length > 1
+                    ? `O mesmo grid será salvo nos ${enterprises.length} empreendimentos selecionados`
+                    : "Preencha ao longo da semana e clique em Salvar quando quiser"}
           </span>
         </div>
       </section>
