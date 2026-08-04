@@ -30,12 +30,12 @@ import {
   useRemoveBrokerFromWeek,
 } from "@/hooks/use-arsenal";
 import { useAgencies, useAgencyFieldBrokers } from "@/hooks/use-imob";
+import { isApiError, isoWeekNumber, type ArsenalBroker } from "@/lib/arsenal/api";
 import {
-  isApiError,
-  isoWeekNumber,
-  weekStartFromSemana,
-  type ArsenalBroker,
-} from "@/lib/arsenal/api";
+  reuniaoTuesdayFromSemana,
+  reuniaoWeekRangeLabel,
+  weeklyActionsWeekStartFromReuniao,
+} from "@/lib/dashboard/reuniao-week";
 import {
   recordBrokerScoresForParticipants,
   removeBrokerScoresForParticipants,
@@ -71,14 +71,6 @@ const TOAST_DURATION_MS = 3000;
 type StatField = "ind" | "vis" | "pas" | "pas_aprov" | "vendas";
 
 type StatDraft = Partial<Record<StatField, number>>;
-
-function toBrDateRange(weekStart: string, weekEnd: string): string {
-  const fmt = (iso: string) => {
-    const [, m, d] = iso.split("-");
-    return `${d}/${m}`;
-  };
-  return `${fmt(weekStart)} — ${fmt(weekEnd)}`;
-}
 
 function weekdayFromPlannedDate(weekStart: string, plannedDate: string): number {
   const [wy, wm, wd] = weekStart.split("-").map(Number);
@@ -137,9 +129,15 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
     return () => cancelAnimationFrame(t);
   }, []);
 
-  const weekStart = useMemo(
-    () => (mounted ? weekStartFromSemana(semana) : null),
+  // Semana comercial da Reunião de Terça (Ter→Seg). O rótulo é o intervalo
+  // Ter→Seg; a chave enviada à API continua sendo a segunda anterior.
+  const reuniaoTuesday = useMemo(
+    () => (mounted ? reuniaoTuesdayFromSemana(semana) : null),
     [mounted, semana],
+  );
+  const weekStart = useMemo(
+    () => (reuniaoTuesday ? weeklyActionsWeekStartFromReuniao(reuniaoTuesday) : null),
+    [reuniaoTuesday],
   );
 
   const weekQuery = useArsenalWeek(weekStart ?? "", empreendimentoId);
@@ -556,8 +554,7 @@ export function ArsenalTab({ semana, onSemanaChange, empreendimentoIds }: Props)
         loading={loading || !weekStart}
         semana={semana}
         weekNumber={week?.week_number ?? (weekStart ? isoWeekNumber(weekStart) : null)}
-        weekStart={week?.week_start ?? weekStart ?? ""}
-        weekEnd={week?.week_end ?? null}
+        weekLabel={reuniaoTuesday ? reuniaoWeekRangeLabel(reuniaoTuesday) : null}
         validations={validations}
         onSemanaChange={onSemanaChange}
       />
@@ -1082,8 +1079,8 @@ type SemNavProps = {
   loading: boolean;
   semana: number;
   weekNumber: number | null;
-  weekStart: string;
-  weekEnd: string | null;
+  /** Intervalo Ter→Seg já formatado (ex.: `04/08 – 10/08`). */
+  weekLabel: string | null;
   validations: number;
   onSemanaChange: (next: number) => void;
 };
@@ -1092,12 +1089,11 @@ function SemNav({
   loading,
   semana,
   weekNumber,
-  weekStart,
-  weekEnd,
+  weekLabel,
   validations,
   onSemanaChange,
 }: SemNavProps) {
-  const intervalo = weekEnd ? toBrDateRange(weekStart, weekEnd) : "—";
+  const intervalo = weekLabel ?? "—";
   return (
     <div className="sem-nav">
       <button

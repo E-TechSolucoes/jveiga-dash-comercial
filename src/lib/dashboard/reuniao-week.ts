@@ -89,6 +89,14 @@ export function plannedDateWithinReuniaoWeek(plannedIso: string, tuesdayStartIso
   return t >= start && t <= end;
 }
 
+/**
+ * Terça de abertura da semana comercial para o contador `semana` usado pelas
+ * abas de Arsenal / Outbound / Ranking (1 = semana corrente, 0 = anterior).
+ */
+export function reuniaoTuesdayFromSemana(semana: number, ref: Date = new Date()): string {
+  return addWeeksToReuniaoTuesday(currentReuniaoTuesdayIso(ref), semana - 1);
+}
+
 export function addWeeksToReuniaoTuesday(tuesdayStartIso: string, deltaWeeks: number): string {
   const dt = parseLocalYmd(tuesdayStartIso);
   if (!dt) return tuesdayStartIso;

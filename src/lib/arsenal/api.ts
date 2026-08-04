@@ -1,4 +1,8 @@
 import { apiFetch } from "@/lib/auth";
+import {
+  reuniaoTuesdayFromSemana,
+  weeklyActionsWeekStartFromReuniao,
+} from "@/lib/dashboard/reuniao-week";
 
 export type ArsenalAccent =
   | "emerald"
@@ -251,7 +255,8 @@ export function deleteExecution(executionId: string) {
   });
 }
 
-function todaysMondayBR(): Date {
+/** Hoje no fuso comercial (America/Sao_Paulo), como Date local à meia-noite. */
+function todayBR(): Date {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
@@ -259,20 +264,19 @@ function todaysMondayBR(): Date {
     day: "2-digit",
   }).formatToParts(new Date());
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
-  const date = new Date(get("year"), get("month") - 1, get("day"));
-  const dow = date.getDay();
-  const offsetToMonday = dow === 0 ? -6 : 1 - dow;
-  date.setDate(date.getDate() + offsetToMonday);
-  return date;
+  return new Date(get("year"), get("month") - 1, get("day"));
 }
 
+/**
+ * Segunda-feira âncora (`week_start` da API) da semana comercial Ter→Seg
+ * deslocada por `semana` (1 = semana corrente).
+ *
+ * O rótulo exibido é sempre o intervalo Ter→Seg (`reuniaoWeekRangeLabel`); o
+ * backend continua indexando a semana pela segunda anterior à terça de
+ * abertura — mesma convenção do dash de vendas.
+ */
 export function weekStartFromSemana(semana: number): string {
-  const d = todaysMondayBR();
-  d.setDate(d.getDate() + (semana - 1) * 7);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return weeklyActionsWeekStartFromReuniao(reuniaoTuesdayFromSemana(semana, todayBR()));
 }
 
 export function isoWeekNumber(yyyyMmDd: string): number {
