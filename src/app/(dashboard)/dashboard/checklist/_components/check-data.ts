@@ -9,6 +9,8 @@ export type CheckItem = {
   id: string;
   label: string;
   Icon: LucideIcon;
+  /** Só preenchido na Rotina Diária (morning | afternoon | evening). */
+  period?: "morning" | "afternoon" | "evening";
 };
 
 export type ChecklistType = "base" | "diario" | "premiacao";

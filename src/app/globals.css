@@ -3455,6 +3455,67 @@ body {
   gap: 10px;
   margin-top: 6px;
 }
+
+.ck-periods {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 6px;
+}
+
+.ck-period {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ck-period-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.ck-period-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ck-period[data-period="afternoon"] .ck-period-ico {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.ck-period[data-period="evening"] .ck-period-ico {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.ck-period-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ck-period-meta {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.ck-period .ck-list--diario {
+  margin-top: 0;
+}
 .ck-list--quest {
   position: relative;
   padding-left: 2px;

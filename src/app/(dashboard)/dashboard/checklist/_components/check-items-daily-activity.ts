@@ -9,6 +9,8 @@ export type DailyCheckItemWithCheck = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** morning | afternoon | evening — agrupa a Rotina Diária. */
+  period?: "morning" | "afternoon" | "evening";
 
   // estado mesclado entre os empreendimentos selecionados (ALL-must-agree)
   // + flag de divergência.
