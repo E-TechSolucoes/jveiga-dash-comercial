@@ -12,9 +12,12 @@ import {
   Flame,
   History,
   Lock,
+  Moon,
   ShieldCheck,
   Sparkles,
   Star,
+  Sun,
+  Sunrise,
   Target,
   Trophy,
   Zap,
@@ -66,7 +69,20 @@ type CheckRow = {
   icon_name: string;
   is_checked: boolean;
   divergent: boolean;
+  period?: "morning" | "afternoon" | "evening";
 };
+
+type DailyPeriod = "morning" | "afternoon" | "evening";
+
+const DAILY_PERIODS: {
+  id: DailyPeriod;
+  label: string;
+  Icon: LucideIcon;
+}[] = [
+  { id: "morning", label: "Manhã", Icon: Sunrise },
+  { id: "afternoon", label: "Tarde", Icon: Sun },
+  { id: "evening", label: "Noite", Icon: Moon },
+];
 
 const SUB_TABS: {
   id: ChecklistType;
@@ -99,6 +115,7 @@ function toRenderItems(rows: CheckRow[]): CheckItem[] {
     id: it.code,
     label: it.label,
     Icon: resolveLucideIcon(it.icon_name),
+    period: it.period,
   }));
 }
 
@@ -1052,13 +1069,100 @@ export function CheckTab({ comercialName, empreendimentoIds }: Props) {
           </div>
         ) : sub === "premiacao" && currentItems.length === 0 ? (
           <div className="ck-empty">Nenhum item ativo cadastrado.</div>
+        ) : sub === "diario" ? (
+          <div className="ck-periods" data-theme="diario">
+            {DAILY_PERIODS.map((period) => {
+              const periodItems = currentItems.filter((it) => it.period === period.id);
+              if (periodItems.length === 0) return null;
+              const PeriodIcon = period.Icon;
+              const periodDone = periodItems.reduce((n, it) => n + (currentMap[it.id] ? 1 : 0), 0);
+              return (
+                <section
+                  key={period.id}
+                  className="ck-period"
+                  data-period={period.id}
+                  aria-labelledby={`ck-period-${period.id}`}
+                >
+                  <header className="ck-period-head">
+                    <span className="ck-period-ico" aria-hidden>
+                      <PeriodIcon size={16} strokeWidth={2} />
+                    </span>
+                    <h3 id={`ck-period-${period.id}`} className="ck-period-title">
+                      {period.label}
+                    </h3>
+                    <span className="ck-period-meta">
+                      {periodDone}/{periodItems.length}
+                    </span>
+                  </header>
+                  <div
+                    className="ck-list ck-list--quest ck-list--single ck-list--diario"
+                    data-theme="diario"
+                  >
+                    {periodItems.map((item) => {
+                      const Icon = item.Icon;
+                      const index = currentItems.findIndex((it) => it.id === item.id);
+                      const checked = !!currentMap[item.id];
+                      const divergent = !!currentDivergent[item.id];
+                      const isNext =
+                        !checked && currentItems.findIndex((it) => !currentMap[it.id]) === index;
+                      return (
+                        <label
+                          key={item.id}
+                          className="ck-item"
+                          data-done={checked}
+                          data-accent={meta.accent}
+                          data-next={isNext || undefined}
+                          style={{ ["--ck-i" as string]: index } as CSSProperties}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => currentSet(item.id)}
+                          />
+                          <span className="ck-item-step" aria-hidden>
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <span className="ck-checkbox" aria-hidden>
+                            <CheckCircle2 size={14} strokeWidth={2.5} />
+                          </span>
+                          <span className="ck-item-ico" aria-hidden>
+                            <Icon />
+                          </span>
+                          <span className="ck-item-label">{item.label}</span>
+                          {divergent && (
+                            <span
+                              className="status-pill"
+                              data-state="warn"
+                              title="Algum estande tem este check diferente"
+                            >
+                              <AlertCircle size={12} strokeWidth={2.25} />
+                              Divergente
+                            </span>
+                          )}
+                          {!checked && isNext && (
+                            <span className="ck-item-quest-tag" aria-hidden>
+                              Próximo
+                            </span>
+                          )}
+                          {checked && (
+                            <span className="ck-item-done-tag ck-item-done-tag--xp" aria-hidden>
+                              <Zap size={11} strokeWidth={2.5} /> +{quest.xpPer} XP
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         ) : (
           <div
             className={[
               "ck-list",
               "ck-list--quest",
               "ck-list--single",
-              sub === "diario" ? "ck-list--diario" : "",
               sub === "base" ? "ck-list--base" : "",
               sub === "premiacao" ? "ck-list--prem" : "",
             ]
