@@ -39,11 +39,13 @@ steps:
       - -c
       - |
         set -euo pipefail
-        atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
-          --format='value(status.latestReadyRevisionName)')
+        # A revisão que está servindo é a de maior fatia em status.traffic
+        # (LATEST resolve para latestReadyRevisionName). Não dá para usar só
+        # latestReadyRevisionName: com o tráfego fixo o Cloud Run não o avança.
+        atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION --format=json \
+          | python3 -c 'import json,sys; st=json.load(sys.stdin)["status"]; t=max(st["traffic"], key=lambda x: x.get("percent", 0)); print(t.get("revisionName") or st["latestReadyRevisionName"])')
         gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
           --to-revisions=$$atual=100 --quiet
-
   - id: Deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
@@ -71,12 +73,13 @@ steps:
         set -euo pipefail
         nova=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
           --format='value(status.latestCreatedRevisionName)')
-        pronta=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
-          --format='value(status.latestReadyRevisionName)')
-        test "$$nova" = "$$pronta" || { echo "revisão $$nova não ficou pronta"; exit 1; }
+        # Pronta segundo a própria revisão: o latestReadyRevisionName do
+        # serviço não anda enquanto o tráfego está fixo na anterior.
+        pronta=$$(gcloud run revisions describe $$nova --region=$_DEPLOY_REGION --format=json \
+          | python3 -c 'import json,sys; c=json.load(sys.stdin)["status"]["conditions"]; print(next((x["status"] for x in c if x["type"] == "Ready"), "Unknown"))')
+        test "$$pronta" = "True" || { echo "revisão $$nova não ficou pronta ($$pronta)"; exit 1; }
         gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
           --update-tags=candidate=$$nova --quiet
-
   - id: Smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
