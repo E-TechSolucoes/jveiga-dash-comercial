@@ -1,6 +1,6 @@
-import path from "node:path";
-
 import { BigQuery } from "@google-cloud/bigquery";
+
+import { bigQueryOptions } from "@/lib/bigquery/client-options";
 
 const PROJECT = "jeronimo-444814";
 const DATASET = "dwh";
@@ -13,10 +13,7 @@ let client: BigQuery | null = null;
 
 function getBigQuery(): BigQuery {
   if (!client) {
-    const keyFilename =
-      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-      path.join(process.cwd(), "jeronimo-444814-29739d221cc6.json");
-    client = new BigQuery({ projectId: PROJECT, keyFilename });
+    client = new BigQuery(bigQueryOptions(PROJECT));
   }
   return client;
 }
