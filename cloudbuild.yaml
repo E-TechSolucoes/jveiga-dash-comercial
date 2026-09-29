@@ -3,7 +3,7 @@
 # Até aqui essa config vivia inline no trigger do Cloud Build, fora do review e
 # do histórico. Agora vive no repo e muda junto com o código que publica.
 #
-# O deploy é em duas fases: a revisão nova sobe sem tráfego sob a tag
+# O deploy é em duas fases: a revisão nova sobe sem tráfego e ganha a tag
 # `candidate`, leva um smoke test e só então recebe 100% do tráfego. Uma
 # revisão que não responde nunca chega ao usuário.
 
@@ -28,25 +28,54 @@ steps:
       - push
       - $_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
 
+  # Fixa o tráfego na revisão que está no ar antes de subir a nova: com o
+  # tráfego fixo, a revisão nova nasce com 0%. É o que dispensa o --no-traffic,
+  # que obriga o gcloud a batizar a revisão (template.revision) — e com a
+  # revisão batizada qualquer mudança de template pelo Terraform leva 409.
+  - id: Pin
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --format='value(status.latestReadyRevisionName)')
+        gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --to-revisions=$$atual=100 --quiet
+
   - id: Deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
       # Só a imagem e os labels mudam. Env vars, segredos, SA e escala ficam
       # como estão no serviço — quem manda neles é o Terraform (jveiga-infra),
-      # não o pipeline da aplicação.
-      #
-      # --no-traffic falha se o serviço ainda não existe; aqui ele sempre existe.
+      # não o pipeline da aplicação. O comando espera a revisão ficar pronta e
+      # falha se ela não subir; o tráfego segue na anterior.
       - run
-      - deploy
+      - services
+      - update
       - $_SERVICE_NAME
       - --image=$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
       - --region=$_DEPLOY_REGION
       - --platform=managed
-      - --no-traffic
-      - --tag=candidate
       - --update-labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID
       - --quiet
+
+  - id: Tag
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        nova=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --format='value(status.latestCreatedRevisionName)')
+        pronta=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --format='value(status.latestReadyRevisionName)')
+        test "$$nova" = "$$pronta" || { echo "revisão $$nova não ficou pronta"; exit 1; }
+        gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --update-tags=candidate=$$nova --quiet
 
   - id: Smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
