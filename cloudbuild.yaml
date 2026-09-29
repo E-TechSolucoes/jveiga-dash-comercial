@@ -1,0 +1,101 @@
+# Build e deploy do jveiga-dash-comercial no Cloud Run.
+#
+# Até aqui essa config vivia inline no trigger do Cloud Build, fora do review e
+# do histórico. Agora vive no repo e muda junto com o código que publica.
+#
+# O deploy é em duas fases: a revisão nova sobe sem tráfego sob a tag
+# `candidate`, leva um smoke test e só então recebe 100% do tráfego. Uma
+# revisão que não responde nunca chega ao usuário.
+
+steps:
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - $_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      # NEXT_PUBLIC_* entra no bundle no build. Passar só como env do Cloud Run
+      # não resolve — o cliente já foi compilado sem o valor.
+      - --build-arg
+      - NEXT_PUBLIC_API_URL=$_NEXT_PUBLIC_API_URL
+      - -f
+      - Dockerfile
+      - .
+
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - $_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
+
+  - id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      # Só a imagem e os labels mudam. Env vars, segredos, SA e escala ficam
+      # como estão no serviço — quem manda neles é o Terraform (jveiga-infra),
+      # não o pipeline da aplicação.
+      #
+      # --no-traffic falha se o serviço ainda não existe; aqui ele sempre existe.
+      - run
+      - deploy
+      - $_SERVICE_NAME
+      - --image=$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --region=$_DEPLOY_REGION
+      - --platform=managed
+      - --no-traffic
+      - --tag=candidate
+      - --update-labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID
+      - --quiet
+
+  - id: Smoke
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        url=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --format='value(status.traffic.url)' | tr ';' '\n' | grep '^https://candidate---' | head -1)
+        test -n "$$url" || { echo "tag candidate sem URL"; exit 1; }
+        # Qualquer resposta abaixo de 500 prova que o Next subiu. A raiz costuma
+        # redirecionar para o login, então 3xx/401 contam como vivo.
+        for i in 1 2 3 4 5 6; do
+          code=$$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$$url$_SMOKE_PATH" || echo 000)
+          echo "tentativa $$i: $$url$_SMOKE_PATH -> $$code"
+          if [ "$$code" != "000" ] && [ "$$code" -lt 500 ]; then exit 0; fi
+          sleep 10
+        done
+        echo "revisão candidata não respondeu; tráfego continua na anterior"
+        exit 1
+
+  - id: Promote
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update-traffic
+      - $_SERVICE_NAME
+      - --region=$_DEPLOY_REGION
+      - --to-latest
+      - --quiet
+
+images:
+  - $_AR_HOSTNAME/$PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME/$_SERVICE_NAME:$COMMIT_SHA
+
+# Os valores abaixo espelham as substituições do trigger atual, para o arquivo
+# funcionar sozinho (gcloud builds submit). O trigger pode sobrescrevê-los.
+substitutions:
+  _SERVICE_NAME: jveiga-dash-comercial
+  _DEPLOY_REGION: europe-west1
+  _AR_HOSTNAME: europe-west1-docker.pkg.dev
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _NEXT_PUBLIC_API_URL: https://bi-j-veiga-719345865797.southamerica-east1.run.app
+  _SMOKE_PATH: /
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+timeout: 1800s
