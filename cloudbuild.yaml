@@ -42,8 +42,12 @@ steps:
         # A revisão que está servindo é a de maior fatia em status.traffic
         # (LATEST resolve para latestReadyRevisionName). Não dá para usar só
         # latestReadyRevisionName: com o tráfego fixo o Cloud Run não o avança.
-        atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION --format=json \
-          | python3 -c 'import json,sys; st=json.load(sys.stdin)["status"]; t=max(st["traffic"], key=lambda x: x.get("percent", 0)); print(t.get("revisionName") or st["latestReadyRevisionName"])')
+        # Sem python3: a imagem cloud-sdk:slim deixou de trazê-lo (nov/2026).
+        atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --flatten=status.traffic --format='value(status.traffic.percent,status.traffic.revisionName)' \
+          | sort -k1,1nr | head -1 | cut -f2)
+        [ -n "$$atual" ] || atual=$$(gcloud run services describe $_SERVICE_NAME --region=$_DEPLOY_REGION \
+          --format='value(status.latestReadyRevisionName)')
         gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
           --to-revisions=$$atual=100 --quiet
   - id: Deploy
@@ -75,8 +79,9 @@ steps:
           --format='value(status.latestCreatedRevisionName)')
         # Pronta segundo a própria revisão: o latestReadyRevisionName do
         # serviço não anda enquanto o tráfego está fixo na anterior.
-        pronta=$$(gcloud run revisions describe $$nova --region=$_DEPLOY_REGION --format=json \
-          | python3 -c 'import json,sys; c=json.load(sys.stdin)["status"]["conditions"]; print(next((x["status"] for x in c if x["type"] == "Ready"), "Unknown"))')
+        pronta=$$(gcloud run revisions describe $$nova --region=$_DEPLOY_REGION \
+          --flatten=status.conditions --format='value(status.conditions.type,status.conditions.status)' \
+          | awk -F'\t' '$$1 == "Ready" {print $$2}')
         test "$$pronta" = "True" || { echo "revisão $$nova não ficou pronta ($$pronta)"; exit 1; }
         gcloud run services update-traffic $_SERVICE_NAME --region=$_DEPLOY_REGION \
           --update-tags=candidate=$$nova --quiet
